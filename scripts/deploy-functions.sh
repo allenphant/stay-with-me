@@ -17,6 +17,10 @@ fi
 
 node scripts/cloud-preflight.mjs
 
+# Deploy first so a brand-new project creates its default Gen2 runtime service
+# account before the script grants the task-specific IAM edges below.
+npx firebase-tools deploy --only functions --project "${PROJECT_ID}"
+
 # enqueueCardResearch creates an authenticated Cloud Task using the same
 # runtime service account. Keep all three required IAM edges reproducible:
 # create the task, mint its OIDC identity, and invoke the private worker.
@@ -30,8 +34,6 @@ gcloud iam service-accounts add-iam-policy-binding "${RUNTIME_SA}" \
   --member="serviceAccount:${RUNTIME_SA}" \
   --role="roles/iam.serviceAccountUser" \
   --condition=None
-
-npx firebase-tools deploy --only functions --project "${PROJECT_ID}"
 
 gcloud functions add-invoker-policy-binding "${TASK_FUNCTION}" \
   --gen2 \
