@@ -1,7 +1,21 @@
-# AI 網址研讀雲端後端已部署，前端雲端模式已完成串接
+# Stay With Me 獨立 Firebase 遷移中
 
 > **更新時間**：2026-08-03
-> **專案核心**：以 Vanilla JS 與 Firebase 打造的類似 Notion 的個人 AI 大腦/知識庫工具。
+> **專案核心**：以 Vanilla JS 與 Firebase 打造的雙人共編生活空間。
+
+## 2026-08-03 Firebase 專案隔離
+
+* **正式目標專案**：顯示名稱 `Stay With Me`，不可變更的 project ID 為
+  `dating-with-viola`，project number 為 `1060778384338`；Firestore 位於
+  `asia-east1`，目前沒有 collection，Authentication 尚未啟用，也沒有使用者。
+* **資料完全隔離**：前端 Firebase config、Functions 部署腳本、`.firebaserc` 與
+  雲端研讀資料命名空間全面改用新專案；資料根由 `my-personal-ai-brain` 改為
+  `stay-with-me`，不會再讀取 My AI Brain 的字卡。
+* **舊專案待清理**：`my-ai-brain-6867e` 曾誤部署共同空間 Callable Functions，
+  但共同空間 Firestore Rules 未部署。新專案端到端驗證完成後，移除舊專案新增的
+  四個共同空間 Functions；不要刪除既有研究 Functions。
+* **發布狀態**：GitHub Pages 已啟用，但目前正式頁面仍指向舊 Firebase config；
+  新 config 尚未合併與部署，遷移完成前不要在該頁新增、修改或刪除字卡。
 
 ## 2026-08-03 共同空間
 
@@ -10,7 +24,8 @@
 * **後端授權**：邀請內容不允許前端直接讀寫；所有成員異動均由驗證 Firebase Auth 與 space membership 的 Callable Functions 執行，空間最多兩人。
 * **安全規則版本化**：新增 `firestore.rules` 與 `firebase.json` 設定，取代 README 舊有的「任何登入者皆可讀寫」範例。部署與 Console 驗證流程記錄於 `docs/SHARED_SPACES.md`。
 * **雲端研讀相容**：Callable、Scheduler、Cloud Tasks job 與待審核監聽均攜帶目前 `spaceId`，並在後端驗證排程帳號仍是空間成員。
-* **驗證**：Node 語法檢查、完整單元測試與 `git diff --check` 通過；尚未部署 Functions、前端或 Firestore Rules。
+* **驗證**：共同空間版本曾通過 Node 語法檢查、完整單元測試與 Firestore Emulator
+  規則編譯；獨立 Firebase 遷移完成後需重新執行全部驗證。
 
 ## 2026-07-28 最新狀態
 

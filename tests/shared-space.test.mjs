@@ -40,3 +40,20 @@ test('Callable Functions enforce authenticated membership and invited email', as
     assert.match(functionsSource, /requireSpaceMember\(spaceId, uid\)/);
     assert.match(functionsSource, /canAcceptInvite\(inviteSnapshot\.data\(\), \{email\}\)/);
 });
+
+test('production configuration is isolated from the My AI Brain Firebase project', async () => {
+    const [appSource, firebaseRc, deployScript, jobPolicy] = await Promise.all([
+        readFile(new URL('../app.js', import.meta.url), 'utf8'),
+        readFile(new URL('../.firebaserc', import.meta.url), 'utf8'),
+        readFile(new URL('../scripts/deploy-functions.sh', import.meta.url), 'utf8'),
+        readFile(new URL('../functions/src/job-policy.js', import.meta.url), 'utf8')
+    ]);
+    const productionSources = [appSource, firebaseRc, deployScript, jobPolicy].join('\n');
+    assert.match(appSource, /projectId: "dating-with-viola"/);
+    assert.match(appSource, /let appId = 'stay-with-me'/);
+    assert.match(firebaseRc, /"default": "dating-with-viola"/);
+    assert.match(deployScript, /PROJECT_NUMBER="1060778384338"/);
+    assert.match(deployScript, /--only functions:research-backend/);
+    assert.match(jobPolicy, /const APP_ID = "stay-with-me"/);
+    assert.doesNotMatch(productionSources, /my-ai-brain-6867e|my-personal-ai-brain|755512158785/);
+});

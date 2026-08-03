@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-PROJECT_ID="my-ai-brain-6867e"
+PROJECT_ID="dating-with-viola"
 
 if [[ "${CONFIRM_BILLABLE_PROJECT:-}" != "${PROJECT_ID}" ]]; then
   echo "安全停止：這個動作會在可計費專案啟用 Google Cloud APIs。"

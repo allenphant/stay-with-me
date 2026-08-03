@@ -1,7 +1,7 @@
-# My AI Brain 雲端成本預算與防爆帳單清單
+# Stay With Me 雲端成本預算與防爆帳單清單
 
 > 更新日期：2026-07-27  
-> 適用專案：`my-ai-brain-6867e`  
+> 適用專案：`dating-with-viola`（顯示名稱 `Stay With Me`）
 > 使用情境：個人使用、首次約 200 張卡片回補、之後每天約 10 張網址卡片。
 
 ## 結論
@@ -96,8 +96,8 @@ Google Cloud Budget 只會寄通知，不會自動停止服務。因此後端會
 
 ### 專案與帳務
 
-- 不要建立第二個 Firebase／Google Cloud 專案來放 Cloud Run；使用現有 `my-ai-brain-6867e`。
-- 不要在未確認目前專案 ID 時執行沒有 `--project my-ai-brain-6867e` 的部署指令。
+- 不要建立第二個 Firebase／Google Cloud 專案來放 Cloud Run；使用現有 `dating-with-viola`。
+- 不要在未確認目前專案 ID 時執行沒有 `--project dating-with-viola` 的部署指令。
 - 不要以為 Google Cloud Budget 是硬性上限；它預設只發通知。
 - 不要用 Budget 通知自動解除整個專案 Billing。停用 Billing 可能使 Firestore 等付費資源暫時無法存取。
 

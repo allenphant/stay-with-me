@@ -1,8 +1,8 @@
 # 💞 Stay With Me（雙人共編生活空間）
 
-[![Live Demo](https://img.shields.io/badge/Live%20Demo-立即體驗-indigo?style=for-the-badge&logo=vercel)](https://allenphant.github.io/my-ai-brain/)
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-立即體驗-indigo?style=for-the-badge&logo=vercel)](https://allenphant.github.io/stay-with-me/)
 
-🔗 **線上預覽/使用網址：[https://allenphant.github.io/my-ai-brain/](https://allenphant.github.io/my-ai-brain/)**
+🔗 **線上預覽/使用網址：[https://allenphant.github.io/stay-with-me/](https://allenphant.github.io/stay-with-me/)**
 
 這個專案從 My Personal AI Brain 延伸而來，是一個極度輕量、零延遲、且跨裝置同步的雙人生活空間與點子收集處。
 透過結合 **Firebase 即時資料庫** 與 **Google Gemini API**，你可以隨時隨地將大腦中零碎的待辦事項、靈感或網址「傾倒」進收件匣，並透過「AI 魔法整理」一鍵自動將碎片歸類到專屬的區塊中。
@@ -17,7 +17,7 @@
 3. [研讀後端架構與資料流](docs/CLOUD_RESEARCH_ARCHITECTURE.md)
 
 程式碼推上 GitHub 不會自動部署這套後端；啟用 API、設定 secrets 與部署都要求
-明確指定 `my-ai-brain-6867e`，且部署後排程仍維持關閉。
+明確指定 `dating-with-viola`，且部署後排程仍維持關閉。
 
 ## ✨ 核心特色 (Features)
 

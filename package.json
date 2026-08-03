@@ -6,9 +6,9 @@
     "test:functions": "node --test functions/test/*.test.js",
     "cloud:preflight": "node scripts/cloud-preflight.mjs",
     "cloud:enable-apis": "bash scripts/enable-cloud-apis.sh",
-    "emulators": "firebase emulators:start --only functions,firestore --project my-ai-brain-6867e",
+    "emulators": "firebase emulators:start --only functions,firestore --project dating-with-viola",
     "deploy:functions": "bash scripts/deploy-functions.sh",
-    "deploy:rules": "npx firebase-tools deploy --only firestore:rules --project my-ai-brain-6867e"
+    "deploy:rules": "npx firebase-tools deploy --only firestore:rules --project dating-with-viola"
   },
   "devDependencies": {
     "firebase-tools": "^15.24.0"
