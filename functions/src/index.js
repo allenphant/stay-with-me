@@ -25,6 +25,13 @@ const {
 } = require("./job-policy");
 const {analyzeSource, ExternalServiceError} = require("./providers");
 const {describeTaskEnqueueError} = require("./enqueue-errors");
+const {
+  canAcceptInvite,
+  createInviteCode,
+  getInviteExpiration,
+  normalizeEmail,
+  normalizeSpaceName,
+} = require("./spaces");
 
 initializeApp();
 
@@ -67,13 +74,41 @@ function automationRef(uid) {
   return db.doc(`artifacts/${APP_ID}/automationUsers/${uid}`);
 }
 
+function spaceRef(spaceId) {
+  return db.doc(`artifacts/${APP_ID}/spaces/${spaceId}`);
+}
+
+function spaceMemberRef(spaceId, uid) {
+  return spaceRef(spaceId).collection("members").doc(uid);
+}
+
+function membershipRef(uid, spaceId) {
+  return db.doc(`artifacts/${APP_ID}/users/${uid}/memberships/${spaceId}`);
+}
+
+function inviteRef(inviteCode) {
+  return db.doc(`artifacts/${APP_ID}/spaceInvites/${inviteCode}`);
+}
+
+async function requireSpaceMember(spaceId, uid) {
+  const membership = await spaceMemberRef(spaceId, uid).get();
+  if (!membership.exists) {
+    throw new HttpsError("permission-denied", "你不是這個共同空間的成員。");
+  }
+  return membership.data();
+}
+
 function researchUsageRef(uid, periodId) {
   return db.doc(`artifacts/${APP_ID}/users/${uid}/researchUsage/${periodId}`);
 }
 
 async function getAutomationSettings(uid) {
   const snapshot = await automationRef(uid).get();
-  return normalizeAutomationSettings(snapshot.exists ? snapshot.data() : {});
+  const data = snapshot.exists ? snapshot.data() : {};
+  return {
+    ...normalizeAutomationSettings(data),
+    spaceId: String(data.spaceId || uid),
+  };
 }
 
 function taskTargetUri() {
@@ -98,7 +133,7 @@ async function enqueueTask(jobPath) {
   );
 }
 
-async function reserveAndCreateJob({uid, collectionName, cardId, card, settings}) {
+async function reserveAndCreateJob({uid, requestedByUid, collectionName, cardId, card, settings}) {
   const urls = extractUrls(card.text);
   if (urls.length !== 1) {
     return {created: false, reason: "requires_single_url"};
@@ -146,6 +181,7 @@ async function reserveAndCreateJob({uid, collectionName, cardId, card, settings}
     if (!budget.allowed) {
       transaction.set(jobRef, {
         uid,
+        requestedByUid: requestedByUid || uid,
         collectionName,
         cardId,
         sourceUrl,
@@ -173,6 +209,7 @@ async function reserveAndCreateJob({uid, collectionName, cardId, card, settings}
     }, {merge: true});
     transaction.set(jobRef, {
       uid,
+      requestedByUid: requestedByUid || uid,
       collectionName,
       cardId,
       sourceUrl,
@@ -209,6 +246,203 @@ async function reserveAndCreateJob({uid, collectionName, cardId, card, settings}
   return result;
 }
 
+exports.ensurePersonalSpace = onCall({
+  region: REGION,
+  memory: "256MiB",
+  minInstances: 0,
+  maxInstances: 1,
+}, async (request) => {
+  const uid = requireAuth(request);
+  const email = normalizeEmail(request.auth.token?.email);
+  const displayName = String(request.auth.token?.name || "").trim().slice(0, 80);
+  const fallbackName = displayName ? `${displayName} 的空間` : "我的空間";
+  const name = normalizeSpaceName(request.data?.name, fallbackName);
+  const personalSpaceRef = spaceRef(uid);
+  const personalMemberRef = spaceMemberRef(uid, uid);
+  const personalMembershipRef = membershipRef(uid, uid);
+
+  await db.runTransaction(async (transaction) => {
+    const snapshot = await transaction.get(personalSpaceRef);
+    const now = FieldValue.serverTimestamp();
+    if (!snapshot.exists) {
+      transaction.set(personalSpaceRef, {
+        name,
+        ownerUid: uid,
+        memberCount: 1,
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+    transaction.set(personalMemberRef, {
+      uid,
+      email,
+      displayName,
+      role: "owner",
+      joinedAt: now,
+    }, {merge: true});
+    transaction.set(personalMembershipRef, {
+      spaceId: uid,
+      name: snapshot.exists ? normalizeSpaceName(snapshot.data().name, name) : name,
+      ownerUid: uid,
+      role: "owner",
+      updatedAt: now,
+    }, {merge: true});
+  });
+  return {ok: true, spaceId: uid};
+});
+
+exports.createSpaceInvite = onCall({
+  region: REGION,
+  memory: "256MiB",
+  minInstances: 0,
+  maxInstances: 1,
+}, async (request) => {
+  const uid = requireAuth(request);
+  const spaceId = assertDocumentPart(request.data?.spaceId, "spaceId");
+  const invitedEmail = normalizeEmail(request.data?.email);
+  if (!invitedEmail) {
+    throw new HttpsError("invalid-argument", "請輸入有效的受邀 email。");
+  }
+  if (invitedEmail === normalizeEmail(request.auth.token?.email)) {
+    throw new HttpsError("invalid-argument", "不需要邀請你自己的帳號。");
+  }
+  const member = await requireSpaceMember(spaceId, uid);
+  if (member.role !== "owner") {
+    throw new HttpsError("permission-denied", "只有空間擁有者可以邀請成員。");
+  }
+  const spaceSnapshot = await spaceRef(spaceId).get();
+  if (!spaceSnapshot.exists) {
+    throw new HttpsError("not-found", "找不到共同空間。");
+  }
+  if (Number(spaceSnapshot.data().memberCount || 1) >= 2) {
+    throw new HttpsError("failed-precondition", "這個空間已經有兩位成員。");
+  }
+  const inviteCode = createInviteCode();
+  await inviteRef(inviteCode).set({
+    spaceId,
+    spaceName: normalizeSpaceName(spaceSnapshot.data().name),
+    invitedEmail,
+    invitedByUid: uid,
+    status: "pending",
+    expiresAt: getInviteExpiration(),
+    createdAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+  return {ok: true, inviteCode, expiresInDays: 7};
+});
+
+exports.acceptSpaceInvite = onCall({
+  region: REGION,
+  memory: "256MiB",
+  minInstances: 0,
+  maxInstances: 1,
+}, async (request) => {
+  const uid = requireAuth(request);
+  const inviteCode = assertDocumentPart(request.data?.inviteCode, "inviteCode");
+  const email = normalizeEmail(request.auth.token?.email);
+  const displayName = String(request.auth.token?.name || "").trim().slice(0, 80);
+  const targetInviteRef = inviteRef(inviteCode);
+
+  const initialInvite = await targetInviteRef.get();
+  if (!initialInvite.exists) {
+    throw new HttpsError("not-found", "邀請碼不存在。");
+  }
+  const spaceId = assertDocumentPart(initialInvite.data().spaceId, "spaceId");
+  const targetSpaceRef = spaceRef(spaceId);
+  const targetMemberRef = spaceMemberRef(spaceId, uid);
+  const targetMembershipRef = membershipRef(uid, spaceId);
+
+  await db.runTransaction(async (transaction) => {
+    const [inviteSnapshot, targetSpaceSnapshot, existingMember] = await Promise.all([
+      transaction.get(targetInviteRef),
+      transaction.get(targetSpaceRef),
+      transaction.get(targetMemberRef),
+    ]);
+    if (!inviteSnapshot.exists || !targetSpaceSnapshot.exists) {
+      throw new HttpsError("not-found", "邀請或共同空間已不存在。");
+    }
+    const decision = canAcceptInvite(inviteSnapshot.data(), {email});
+    if (!decision.allowed) {
+      const messages = {
+        email_mismatch: "請使用受邀的 Google 帳號登入後再加入。",
+        invite_expired: "邀請已過期，請空間擁有者重新建立。",
+        invite_not_pending: "這份邀請已經使用或失效。",
+      };
+      throw new HttpsError("permission-denied", messages[decision.reason] || "無法接受邀請。");
+    }
+    const now = FieldValue.serverTimestamp();
+    const space = targetSpaceSnapshot.data();
+    if (!existingMember.exists && Number(space.memberCount || 1) >= 2) {
+      throw new HttpsError("failed-precondition", "這個空間已經有兩位成員。");
+    }
+    transaction.set(targetMemberRef, {
+      uid,
+      email,
+      displayName,
+      role: "member",
+      joinedAt: now,
+    }, {merge: true});
+    transaction.set(targetMembershipRef, {
+      spaceId,
+      name: normalizeSpaceName(space.name),
+      ownerUid: space.ownerUid,
+      role: "member",
+      updatedAt: now,
+    }, {merge: true});
+    transaction.set(targetInviteRef, {
+      status: "accepted",
+      acceptedByUid: uid,
+      acceptedAt: now,
+      updatedAt: now,
+    }, {merge: true});
+    if (!existingMember.exists) {
+      transaction.set(targetSpaceRef, {
+        memberCount: FieldValue.increment(1),
+        updatedAt: now,
+      }, {merge: true});
+    }
+  });
+  return {ok: true, spaceId};
+});
+
+exports.removeSpaceMember = onCall({
+  region: REGION,
+  memory: "256MiB",
+  minInstances: 0,
+  maxInstances: 1,
+}, async (request) => {
+  const uid = requireAuth(request);
+  const spaceId = assertDocumentPart(request.data?.spaceId, "spaceId");
+  const memberUid = assertDocumentPart(request.data?.memberUid, "memberUid");
+  const requester = await requireSpaceMember(spaceId, uid);
+  if (requester.role !== "owner") {
+    throw new HttpsError("permission-denied", "只有空間擁有者可以移除成員。");
+  }
+  if (memberUid === uid) {
+    throw new HttpsError("invalid-argument", "空間擁有者不能移除自己。");
+  }
+  const targetMemberRef = spaceMemberRef(spaceId, memberUid);
+  await db.runTransaction(async (transaction) => {
+    const memberSnapshot = await transaction.get(targetMemberRef);
+    if (!memberSnapshot.exists) return;
+    transaction.delete(targetMemberRef);
+    transaction.delete(membershipRef(memberUid, spaceId));
+    transaction.set(spaceRef(spaceId), {
+      memberCount: FieldValue.increment(-1),
+      updatedAt: FieldValue.serverTimestamp(),
+    }, {merge: true});
+  });
+  const removedAutomation = await automationRef(memberUid).get();
+  if (removedAutomation.exists && removedAutomation.data().spaceId === spaceId) {
+    await removedAutomation.ref.set({
+      enabled: false,
+      nextRunAt: null,
+      updatedAt: FieldValue.serverTimestamp(),
+    }, {merge: true});
+  }
+  return {ok: true};
+});
+
 exports.updateResearchAutomation = onCall({
   region: REGION,
   memory: "256MiB",
@@ -216,13 +450,16 @@ exports.updateResearchAutomation = onCall({
   maxInstances: 1,
 }, async (request) => {
   const uid = requireAuth(request);
+  const spaceId = assertDocumentPart(request.data?.spaceId || uid, "spaceId");
+  await requireSpaceMember(spaceId, uid);
   const settings = normalizeAutomationSettings(request.data || {});
   await automationRef(uid).set({
     ...settings,
     uid,
+    spaceId,
     updatedAt: FieldValue.serverTimestamp(),
   }, {merge: true});
-  return {ok: true, settings};
+  return {ok: true, settings: {...settings, spaceId}};
 });
 
 exports.enqueueCardResearch = onCall({
@@ -232,16 +469,19 @@ exports.enqueueCardResearch = onCall({
   maxInstances: 1,
 }, async (request) => {
   const uid = requireAuth(request);
+  const spaceId = assertDocumentPart(request.data?.spaceId || uid, "spaceId");
+  await requireSpaceMember(spaceId, uid);
   const collectionName = assertDocumentPart(request.data?.collectionName, "collectionName");
   const cardId = assertDocumentPart(request.data?.cardId, "cardId");
-  const cardRef = db.doc(getCardPath(uid, collectionName, cardId));
+  const cardRef = db.doc(getCardPath(spaceId, collectionName, cardId));
   const cardSnapshot = await cardRef.get();
   if (!cardSnapshot.exists) {
     throw new HttpsError("not-found", "找不到卡片。");
   }
   try {
     return await reserveAndCreateJob({
-      uid,
+      uid: spaceId,
+      requestedByUid: uid,
       collectionName,
       cardId,
       card: cardSnapshot.data(),
@@ -270,9 +510,11 @@ exports.resolveResearchReview = onCall({
   maxInstances: 1,
 }, async (request) => {
   const uid = requireAuth(request);
+  const spaceId = assertDocumentPart(request.data?.spaceId || uid, "spaceId");
+  await requireSpaceMember(spaceId, uid);
   const jobId = assertDocumentPart(request.data?.jobId, "jobId");
   const decision = request.data?.decision === "succeeded" ? "succeeded" : "discarded";
-  const jobRef = db.doc(getResearchJobPath(uid, jobId));
+  const jobRef = db.doc(getResearchJobPath(spaceId, jobId));
   const snapshot = await jobRef.get();
   if (!snapshot.exists) {
     throw new HttpsError("not-found", "找不到研讀工作。");
@@ -339,10 +581,18 @@ exports.discoverDueResearchJobs = onSchedule({
   for (const userSnapshot of dueUsers) {
     const uid = userSnapshot.id;
     const settings = normalizeAutomationSettings(userSnapshot.data());
+    const spaceId = String(userSnapshot.data().spaceId || uid);
     try {
-      const candidates = await findCandidateCards(uid, settings.maxJobsPerRun);
+      const memberSnapshot = await spaceMemberRef(spaceId, uid).get();
+      if (!memberSnapshot.exists) throw new Error("automation user is not a space member");
+      const candidates = await findCandidateCards(spaceId, settings.maxJobsPerRun);
       for (const candidate of candidates) {
-        await reserveAndCreateJob({uid, settings, ...candidate});
+        await reserveAndCreateJob({
+          uid: spaceId,
+          requestedByUid: uid,
+          settings,
+          ...candidate,
+        });
       }
       await userSnapshot.ref.set({
         lastRunAt: FieldValue.serverTimestamp(),

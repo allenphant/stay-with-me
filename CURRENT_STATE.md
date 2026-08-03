@@ -1,7 +1,16 @@
 # AI 網址研讀雲端後端已部署，前端雲端模式已完成串接
 
-> **更新時間**：2026-07-28
+> **更新時間**：2026-08-03
 > **專案核心**：以 Vanilla JS 與 Firebase 打造的類似 Notion 的個人 AI 大腦/知識庫工具。
+
+## 2026-08-03 共同空間
+
+* **雙人共編資料邊界**：保留既有 `users/{uid}` 資料，將資料根 ID 視為 `spaceId`；owner 原卡片不用搬移，受邀成員取得 membership 後即可共編。
+* **成員與邀請**：新增 owner personal-space bootstrap、指定 Google 帳號 email 的七日邀請碼、接受邀請、空間切換、成員清單與 owner 移除成員。
+* **後端授權**：邀請內容不允許前端直接讀寫；所有成員異動均由驗證 Firebase Auth 與 space membership 的 Callable Functions 執行，空間最多兩人。
+* **安全規則版本化**：新增 `firestore.rules` 與 `firebase.json` 設定，取代 README 舊有的「任何登入者皆可讀寫」範例。部署與 Console 驗證流程記錄於 `docs/SHARED_SPACES.md`。
+* **雲端研讀相容**：Callable、Scheduler、Cloud Tasks job 與待審核監聽均攜帶目前 `spaceId`，並在後端驗證排程帳號仍是空間成員。
+* **驗證**：Node 語法檢查、完整單元測試與 `git diff --check` 通過；尚未部署 Functions、前端或 Firestore Rules。
 
 ## 2026-07-28 最新狀態
 
