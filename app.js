@@ -94,8 +94,18 @@
         const updateResearchAutomationCallable = httpsCallable(cloudFunctions, 'updateResearchAutomation');
         const enqueueCardResearchCallable = httpsCallable(cloudFunctions, 'enqueueCardResearch');
         const resolveResearchReviewCallable = httpsCallable(cloudFunctions, 'resolveResearchReview');
+        const ensurePersonalSpaceCallable = httpsCallable(cloudFunctions, 'ensurePersonalSpace');
+        const createSpaceInviteCallable = httpsCallable(cloudFunctions, 'createSpaceInvite');
+        const acceptSpaceInviteCallable = httpsCallable(cloudFunctions, 'acceptSpaceInvite');
+        const removeSpaceMemberCallable = httpsCallable(cloudFunctions, 'removeSpaceMember');
 
         let currentUser = null;
+        let currentSpaceId = null;
+        let currentSpaces = [];
+        let currentSpaceMembers = [];
+        let unsubscribeSpaceMemberships = null;
+        let unsubscribeSpaceMembers = null;
+        let initializedSpaceId = null;
         let currentCategories = [];
         let currentTags = [];
         let draftTags = [];
@@ -128,6 +138,18 @@
         let researchBackfillOrigin = 'manual';
         let automaticResearchCheckTimer = null;
         let automaticResearchPollTimer = null;
+
+        function getActiveSpaceId() {
+            return currentSpaceId || currentUser?.uid || null;
+        }
+
+        function getActiveSpace() {
+            return currentSpaces.find(space => space.spaceId === getActiveSpaceId()) || null;
+        }
+
+        function getSpaceStorageKey() {
+            return currentUser ? `activeSpace:${currentUser.uid}` : 'activeSpace:anonymous';
+        }
         let automaticResearchInboxLoaded = false;
         let automaticResearchCategoriesLoaded = false;
         const automaticResearchLoadedCollections = new Set();
@@ -202,10 +224,10 @@
 
         async function copyCardDetails(oldCol, newCol, oldId, newId) {
             try {
-                const oldNoteRef = doc(db, 'artifacts', appId, 'users', currentUser.uid, oldCol, oldId, 'details', 'note');
+                const oldNoteRef = doc(db, 'artifacts', appId, 'users', getActiveSpaceId(), oldCol, oldId, 'details', 'note');
                 const oldNoteSnap = await getDoc(oldNoteRef);
                 if (oldNoteSnap.exists()) {
-                    const newNoteRef = doc(db, 'artifacts', appId, 'users', currentUser.uid, newCol, newId, 'details', 'note');
+                    const newNoteRef = doc(db, 'artifacts', appId, 'users', getActiveSpaceId(), newCol, newId, 'details', 'note');
                     await setDoc(newNoteRef, oldNoteSnap.data());
                     await deleteDoc(oldNoteRef);
                 }
@@ -252,7 +274,7 @@
         
         async function saveCategory(categoryData) {
             if (!currentUser) return;
-            const catCol = collection(db, 'artifacts', appId, 'users', currentUser.uid, 'categories');
+            const catCol = collection(db, 'artifacts', appId, 'users', getActiveSpaceId(), 'categories');
             if (categoryData.id) {
                 const { id, ...data } = categoryData;
                 await updateDoc(doc(catCol, id), data);
@@ -263,14 +285,14 @@
 
         async function deleteCategoryFunc(id) {
             if (!currentUser) return;
-            await deleteDoc(doc(db, 'artifacts', appId, 'users', currentUser.uid, 'categories', id));
+            await deleteDoc(doc(db, 'artifacts', appId, 'users', getActiveSpaceId(), 'categories', id));
             showToast('已刪除分類');
         }
 
         function setupCategoryListener(catId, catType, catName, catIcon) {
             const listEl = document.getElementById(`list-${catId}`);
             if (!listEl) return;
-            onSnapshot(collection(db, 'artifacts', appId, 'users', currentUser.uid, catId), (snapshot) => {
+            onSnapshot(collection(db, 'artifacts', appId, 'users', getActiveSpaceId(), catId), (snapshot) => {
                 const items = []; snapshot.forEach(doc => items.push({ id: doc.id, ...doc.data() }));
                 items.sort((a, b) => getOrder(b) - getOrder(a));
                 currentItemsByCollection.set(catId, items);
@@ -358,7 +380,7 @@
                         }
 
                         try {
-                            const docRef = doc(db, 'artifacts', appId, 'users', currentUser.uid, oldCol, id);
+                            const docRef = doc(db, 'artifacts', appId, 'users', getActiveSpaceId(), oldCol, id);
                             if (oldCol === newCol) {
                                 if (evt.oldIndex !== evt.newIndex) await updateDoc(docRef, { order: newOrder });
                             } else {
@@ -377,20 +399,20 @@
                                     
                                     historyManager.push({
                                         undo: async () => {
-                                            await setDoc(doc(db, 'artifacts', appId, 'users', currentUser.uid, oldCol, id), oldData);
+                                            await setDoc(doc(db, 'artifacts', appId, 'users', getActiveSpaceId(), oldCol, id), oldData);
                                             await copyCardDetails(newCol, oldCol, id, id);
-                                            await deleteDoc(doc(db, 'artifacts', appId, 'users', currentUser.uid, newCol, id));
+                                            await deleteDoc(doc(db, 'artifacts', appId, 'users', getActiveSpaceId(), newCol, id));
                                             showToast(`已還原：將「${shortText}」放回 [${oldName}]`, 'fas fa-undo');
                                         },
                                         redo: async () => {
-                                            await setDoc(doc(db, 'artifacts', appId, 'users', currentUser.uid, newCol, id), data);
+                                            await setDoc(doc(db, 'artifacts', appId, 'users', getActiveSpaceId(), newCol, id), data);
                                             await copyCardDetails(oldCol, newCol, id, id);
-                                            await deleteDoc(doc(db, 'artifacts', appId, 'users', currentUser.uid, oldCol, id));
+                                            await deleteDoc(doc(db, 'artifacts', appId, 'users', getActiveSpaceId(), oldCol, id));
                                             showToast(`已重做：將「${shortText}」移至 [${newName}]`, 'fas fa-redo');
                                         }
                                     });
 
-                                    await setDoc(doc(db, 'artifacts', appId, 'users', currentUser.uid, newCol, id), data);
+                                    await setDoc(doc(db, 'artifacts', appId, 'users', getActiveSpaceId(), newCol, id), data);
                                     await copyCardDetails(oldCol, newCol, id, id);
                                     await deleteDoc(docRef);
                                     showToast(`已將「${shortText}」移至 [${newName}]`, 'fas fa-exchange-alt');
@@ -890,7 +912,7 @@
         }
 
         function getAutomaticResearchUserId() {
-            return currentUser?.uid || 'anonymous';
+            return getActiveSpaceId() || 'anonymous';
         }
 
         function readCurrentAutomaticResearchState() {
@@ -1099,7 +1121,7 @@
 
         function refreshMergedResearchReviews() {
             const localReviews = currentUser
-                ? readResearchReviews(localStorage, currentUser.uid)
+                ? readResearchReviews(localStorage, getActiveSpaceId())
                 : [];
             researchReviewItems = mergeResearchReviews(localReviews, cloudResearchReviewItems);
             renderResearchReviewPanel();
@@ -1114,7 +1136,7 @@
         function saveResearchReview(payload) {
             if (!currentUser) throw new Error('使用者尚未登入');
             const reviewId = getResearchBackfillKey(payload.collectionName, payload.itemId);
-            upsertResearchReview(localStorage, currentUser.uid, {
+            upsertResearchReview(localStorage, getActiveSpaceId(), {
                 id: reviewId,
                 ...payload,
                 createdAt: Date.now()
@@ -1130,11 +1152,12 @@
                 if (review?.cloudManaged && review.cloudJobId) {
                     await resolveResearchReviewCallable({
                         jobId: review.cloudJobId,
+                        spaceId: getActiveSpaceId(),
                         decision: decision === 'succeeded' ? 'succeeded' : 'discarded'
                     });
                     cloudResearchReviewItems = cloudResearchReviewItems.filter(item => item.id !== reviewId);
                 } else {
-                    removeResearchReview(localStorage, currentUser.uid, reviewId);
+                    removeResearchReview(localStorage, getActiveSpaceId(), reviewId);
                 }
                 refreshMergedResearchReviews();
                 return true;
@@ -1155,10 +1178,10 @@
             cloudResearchListenerError = '';
         }
 
-        function setupCloudResearchListeners(uid) {
+        function setupCloudResearchListeners(spaceId) {
             cleanupCloudResearchListeners();
             unsubscribeCloudAutomation = onSnapshot(
-                doc(db, 'artifacts', appId, 'automationUsers', uid),
+                doc(db, 'artifacts', appId, 'automationUsers', currentUser.uid),
                 snapshot => {
                     cloudAutomationSettings = snapshot.exists() ? snapshot.data() : null;
                     renderAutomaticResearchScheduleStatus();
@@ -1171,7 +1194,7 @@
             );
             unsubscribeCloudResearchJobs = onSnapshot(
                 query(
-                    collection(db, 'artifacts', appId, 'users', uid, 'researchJobs'),
+                    collection(db, 'artifacts', appId, 'users', spaceId, 'researchJobs'),
                     where('status', '==', 'pending_review')
                 ),
                 async snapshot => {
@@ -1185,7 +1208,7 @@
                             let card = cachedCard;
                             if (!card) {
                                 const cardSnapshot = await getDoc(
-                                    doc(db, 'artifacts', appId, 'users', uid, job.collectionName, job.cardId)
+                                    doc(db, 'artifacts', appId, 'users', spaceId, job.collectionName, job.cardId)
                                 );
                                 card = cardSnapshot.exists() ? cardSnapshot.data() : {};
                             }
@@ -1196,7 +1219,7 @@
                                 tags: currentTags
                             });
                         }));
-                        if (currentUser?.uid !== uid) return;
+                        if (getActiveSpaceId() !== spaceId) return;
                         cloudResearchReviewItems = reviews;
                         cloudResearchListenerError = '';
                         refreshMergedResearchReviews();
@@ -1217,7 +1240,10 @@
 
         async function syncCloudAutomationSettings(interval) {
             const response = await updateResearchAutomationCallable(
-                buildCloudAutomationPayload(interval, { approvalMode: 'manual' })
+                {
+                    ...buildCloudAutomationPayload(interval, { approvalMode: 'manual' }),
+                    spaceId: getActiveSpaceId()
+                }
             );
             cloudAutomationSettings = response.data?.settings || cloudAutomationSettings;
             renderAutomaticResearchScheduleStatus();
@@ -1254,6 +1280,7 @@
             );
             try {
                 const response = await enqueueCardResearchCallable({
+                    spaceId: getActiveSpaceId(),
                     collectionName,
                     cardId: item.id
                 });
@@ -1804,7 +1831,7 @@
         }
 
         function getResearchLogUserId() {
-            return currentUser?.uid || 'anonymous';
+            return getActiveSpaceId() || 'anonymous';
         }
 
         function updateResearchLogCount() {
@@ -2187,7 +2214,7 @@
                             const itemsToDelete = [];
                             for(const el of itemsEl) {
                                 const itemId = el.getAttribute('data-id');
-                                const docRef = doc(db, 'artifacts', appId, 'users', currentUser.uid, cat.id, itemId);
+                                const docRef = doc(db, 'artifacts', appId, 'users', getActiveSpaceId(), cat.id, itemId);
                                 const docSnap = await getDoc(docRef);
                                 if (docSnap.exists()) {
                                     itemsToDelete.push({ id: itemId, data: docSnap.data() });
@@ -2199,13 +2226,13 @@
                                 historyManager.push({
                                     undo: async () => {
                                         for (const item of itemsToDelete) {
-                                            await setDoc(doc(db, 'artifacts', appId, 'users', currentUser.uid, cat.id, item.id), item.data);
+                                            await setDoc(doc(db, 'artifacts', appId, 'users', getActiveSpaceId(), cat.id, item.id), item.data);
                                         }
                                         showToast(`已還原：放回 ${itemsToDelete.length} 個已完成項目`, 'fas fa-undo');
                                     },
                                     redo: async () => {
                                         for (const item of itemsToDelete) {
-                                            await deleteDoc(doc(db, 'artifacts', appId, 'users', currentUser.uid, cat.id, item.id));
+                                            await deleteDoc(doc(db, 'artifacts', appId, 'users', getActiveSpaceId(), cat.id, item.id));
                                         }
                                         showToast(`已重做：刪除 ${itemsToDelete.length} 個已完成項目`, 'fas fa-redo');
                                     }
@@ -2341,6 +2368,148 @@
             }
         }
 
+        function renderSpaceControls() {
+            const select = document.getElementById('space-select');
+            const statusButton = document.getElementById('space-status-btn');
+            const activeName = document.getElementById('active-space-name');
+            const ownerControls = document.getElementById('space-owner-controls');
+            const activeSpace = getActiveSpace();
+            select.innerHTML = '';
+            currentSpaces.forEach(space => {
+                const option = document.createElement('option');
+                option.value = space.spaceId;
+                option.textContent = `${space.name || '未命名空間'}${space.role === 'owner' ? '（擁有者）' : ''}`;
+                option.selected = space.spaceId === getActiveSpaceId();
+                select.appendChild(option);
+            });
+            select.disabled = currentSpaces.length < 2;
+            activeName.textContent = activeSpace?.name || '我的空間';
+            statusButton.classList.toggle('hidden', !currentUser);
+            statusButton.classList.toggle('flex', Boolean(currentUser));
+            ownerControls.classList.toggle('hidden', activeSpace?.role !== 'owner');
+            renderSpaceMembers();
+        }
+
+        function renderSpaceMembers() {
+            const container = document.getElementById('space-member-list');
+            container.replaceChildren();
+            if (currentSpaceMembers.length === 0) {
+                const empty = document.createElement('div');
+                empty.className = 'rounded-lg bg-white/70 px-3 py-2';
+                empty.textContent = currentUser ? '正在載入成員…' : '登入後載入成員';
+                container.appendChild(empty);
+                return;
+            }
+            const canRemove = getActiveSpace()?.role === 'owner';
+            currentSpaceMembers.forEach(member => {
+                const row = document.createElement('div');
+                row.className = 'flex items-center justify-between gap-3 rounded-lg bg-white/80 px-3 py-2';
+                const identity = document.createElement('div');
+                identity.className = 'min-w-0';
+                const name = document.createElement('div');
+                name.className = 'truncate font-bold text-slate-800';
+                name.textContent = member.displayName || member.email || '未命名成員';
+                const detail = document.createElement('div');
+                detail.className = 'truncate text-[11px] text-slate-500';
+                detail.textContent = `${member.email || ''}${member.role === 'owner' ? ' · 擁有者' : ' · 成員'}`;
+                identity.append(name, detail);
+                row.appendChild(identity);
+                if (canRemove && member.role !== 'owner') {
+                    const remove = document.createElement('button');
+                    remove.type = 'button';
+                    remove.className = 'shrink-0 rounded-md px-2 py-1 font-bold text-rose-600 hover:bg-rose-50';
+                    remove.textContent = '移除';
+                    remove.addEventListener('click', () => void removeSpaceMember(member));
+                    row.appendChild(remove);
+                }
+                container.appendChild(row);
+            });
+        }
+
+        function setupSpaceMembersListener(spaceId) {
+            unsubscribeSpaceMembers?.();
+            unsubscribeSpaceMembers = onSnapshot(
+                collection(db, 'artifacts', appId, 'spaces', spaceId, 'members'),
+                snapshot => {
+                    currentSpaceMembers = snapshot.docs.map(item => ({uid: item.id, ...item.data()}));
+                    currentSpaceMembers.sort((a, b) => (a.role === 'owner' ? -1 : 1) - (b.role === 'owner' ? -1 : 1));
+                    renderSpaceMembers();
+                },
+                error => {
+                    console.error('無法載入空間成員：', error);
+                    currentSpaceMembers = [];
+                    renderSpaceMembers();
+                }
+            );
+        }
+
+        function openRequestedEditorForSpace(spaceId) {
+            const urlParams = new URLSearchParams(window.location.search);
+            const editorId = urlParams.get('editor');
+            const editorCol = urlParams.get('col');
+            if (!editorId || !editorCol) return;
+            getDoc(doc(db, 'artifacts', appId, 'users', spaceId, editorCol, editorId))
+                .then(docSnap => {
+                    if (docSnap.exists()) {
+                        const editorUrl = `${window.location.pathname}?editor=${encodeURIComponent(editorId)}&col=${encodeURIComponent(editorCol)}`;
+                        history.replaceState({ overlay: null }, '', window.location.pathname);
+                        history.pushState({ overlay: 'editor', itemId: editorId, collectionName: editorCol }, '', editorUrl);
+                        openEditor(editorId, docSnap.data().text || '無標題', editorCol, { fromHistory: true });
+                    } else {
+                        history.replaceState({ overlay: null }, '', window.location.pathname);
+                    }
+                }).catch(err => console.error(err));
+        }
+
+        function startSpaceDataListeners(spaceId) {
+            if (!currentUser || !spaceId || initializedSpaceId === spaceId) return;
+            initializedSpaceId = spaceId;
+            loadResearchReviews();
+            updateResearchLogCount();
+            setupSpaceMembersListener(spaceId);
+            setupRealtimeListeners(spaceId);
+            setupCloudResearchListeners(spaceId);
+            openRequestedEditorForSpace(spaceId);
+        }
+
+        async function initializeSpaces(user) {
+            unsubscribeSpaceMemberships?.();
+            unsubscribeSpaceMemberships = null;
+            currentSpaces = [];
+            currentSpaceId = user.uid;
+            initializedSpaceId = null;
+            try {
+                await ensurePersonalSpaceCallable();
+                unsubscribeSpaceMemberships = onSnapshot(
+                    collection(db, 'artifacts', appId, 'users', user.uid, 'memberships'),
+                    snapshot => {
+                        currentSpaces = snapshot.docs
+                            .map(item => ({spaceId: item.id, ...item.data()}))
+                            .sort((a, b) => (a.role === 'owner' ? -1 : 1) - (b.role === 'owner' ? -1 : 1));
+                        const savedSpaceId = localStorage.getItem(getSpaceStorageKey());
+                        currentSpaceId = currentSpaces.some(space => space.spaceId === savedSpaceId)
+                            ? savedSpaceId
+                            : currentSpaces[0]?.spaceId || user.uid;
+                        localStorage.setItem(getSpaceStorageKey(), currentSpaceId);
+                        renderSpaceControls();
+                        startSpaceDataListeners(currentSpaceId);
+                    },
+                    error => {
+                        console.error('無法載入共同空間：', error);
+                        document.getElementById('space-action-status').textContent = '共同空間載入失敗，暫時使用個人空間。';
+                        startSpaceDataListeners(user.uid);
+                    }
+                );
+            } catch (error) {
+                console.error('共同空間初始化失敗：', error);
+                currentSpaces = [{spaceId: user.uid, name: '我的空間', ownerUid: user.uid, role: 'owner'}];
+                currentSpaceId = user.uid;
+                renderSpaceControls();
+                document.getElementById('space-action-status').textContent = '共同空間後端尚未部署，暫時使用原本的個人空間。';
+                startSpaceDataListeners(user.uid);
+            }
+        }
+
         onAuthStateChanged(auth, (user) => {
             if (user) {
                 currentUser = user;
@@ -2353,27 +2522,9 @@
                 document.getElementById('auth-status').classList.replace('bg-amber-500', 'bg-emerald-500');
                 document.getElementById('auth-text').innerText = user.displayName ? `嗨，${user.displayName}` : "已登入";
                 document.getElementById('login-btn').classList.add('hidden'); document.getElementById('logout-btn').classList.remove('hidden');
-                setupRealtimeListeners(user.uid);
-                setupCloudResearchListeners(user.uid);
+                void initializeSpaces(user);
                 clearInterval(automaticResearchPollTimer);
                 automaticResearchPollTimer = setInterval(() => void checkAutomaticResearchSchedule(), 60_000);
-                
-                const urlParams = new URLSearchParams(window.location.search);
-                const editorId = urlParams.get('editor');
-                const editorCol = urlParams.get('col');
-                if (editorId && editorCol) {
-                    getDoc(doc(db, 'artifacts', appId, 'users', user.uid, editorCol, editorId))
-                        .then(docSnap => {
-                            if (docSnap.exists()) {
-                                const editorUrl = `${window.location.pathname}?editor=${encodeURIComponent(editorId)}&col=${encodeURIComponent(editorCol)}`;
-                                history.replaceState({ overlay: null }, '', window.location.pathname);
-                                history.pushState({ overlay: 'editor', itemId: editorId, collectionName: editorCol }, '', editorUrl);
-                                openEditor(editorId, docSnap.data().text || '無標題', editorCol, { fromHistory: true });
-                            } else {
-                                history.replaceState({ overlay: null }, '', window.location.pathname);
-                            }
-                        }).catch(err => console.error(err));
-                }
                 
                 handleIncomingShare();
                 processPendingShare();
@@ -2387,6 +2538,16 @@
                 automaticResearchCategoriesLoaded = false;
                 automaticResearchLoadedCollections.clear();
                 currentUser = null;
+                currentSpaceId = null;
+                currentSpaces = [];
+                currentSpaceMembers = [];
+                initializedSpaceId = null;
+                unsubscribeSpaceMemberships?.();
+                unsubscribeSpaceMemberships = null;
+                unsubscribeSpaceMembers?.();
+                unsubscribeSpaceMembers = null;
+                renderSpaceControls();
+                renderSpaceMembers();
                 researchReviewItems = [];
                 updateResearchLogCount();
                 document.getElementById('auth-status').classList.replace('bg-emerald-500', 'bg-amber-500');
@@ -2702,7 +2863,7 @@
                 
                 checkbox.addEventListener('click', (e) => e.stopPropagation());
                 checkbox.addEventListener('change', async (e) => {
-                    if(currentUser) try { await updateDoc(doc(db, 'artifacts', appId, 'users', currentUser.uid, containerEl.getAttribute('data-col'), item.id), { completed: e.target.checked }); } catch(err) {}
+                    if(currentUser) try { await updateDoc(doc(db, 'artifacts', appId, 'users', getActiveSpaceId(), containerEl.getAttribute('data-col'), item.id), { completed: e.target.checked }); } catch(err) {}
                 });
 
                 attachItemListeners(li, item, containerEl.getAttribute('data-col')); containerEl.appendChild(li);
@@ -2744,7 +2905,7 @@
                 try { 
                     const col = pendingDeleteTarget.col;
                     const id = pendingDeleteTarget.id;
-                    const docRef = doc(db, 'artifacts', appId, 'users', currentUser.uid, col, id);
+                    const docRef = doc(db, 'artifacts', appId, 'users', getActiveSpaceId(), col, id);
                     const docSnap = await getDoc(docRef);
                     if (docSnap.exists()) {
                         const data = docSnap.data();
@@ -2752,11 +2913,11 @@
                         const colName = getCollectionName(col);
                         historyManager.push({
                             undo: async () => {
-                                await setDoc(doc(db, 'artifacts', appId, 'users', currentUser.uid, col, id), data);
+                                await setDoc(doc(db, 'artifacts', appId, 'users', getActiveSpaceId(), col, id), data);
                                 showToast(`已還原：將「${shortText}」放回 [${colName}]`, 'fas fa-undo');
                             },
                             redo: async () => {
-                                await deleteDoc(doc(db, 'artifacts', appId, 'users', currentUser.uid, col, id));
+                                await deleteDoc(doc(db, 'artifacts', appId, 'users', getActiveSpaceId(), col, id));
                                 showToast(`已重做：將「${shortText}」移至垃圾桶`, 'fas fa-redo');
                             }
                         });
@@ -2822,22 +2983,22 @@
                             historyManager.push({
                                 undo: async () => {
                                     const oldData = { ...dataToMove, order: oldOrder };
-                                    await setDoc(doc(db, 'artifacts', appId, 'users', currentUser.uid, oldCol, id), oldData);
+                                    await setDoc(doc(db, 'artifacts', appId, 'users', getActiveSpaceId(), oldCol, id), oldData);
                                     await copyCardDetails(targetCol, oldCol, id, id);
-                                    await deleteDoc(doc(db, 'artifacts', appId, 'users', currentUser.uid, targetCol, id));
+                                    await deleteDoc(doc(db, 'artifacts', appId, 'users', getActiveSpaceId(), targetCol, id));
                                     showToast(`已還原：將「${shortText}」放回 [${oldName}]`, 'fas fa-undo');
                                 },
                                 redo: async () => {
-                                    await setDoc(doc(db, 'artifacts', appId, 'users', currentUser.uid, targetCol, id), dataToMove);
+                                    await setDoc(doc(db, 'artifacts', appId, 'users', getActiveSpaceId(), targetCol, id), dataToMove);
                                     await copyCardDetails(oldCol, targetCol, id, id);
-                                    await deleteDoc(doc(db, 'artifacts', appId, 'users', currentUser.uid, oldCol, id));
+                                    await deleteDoc(doc(db, 'artifacts', appId, 'users', getActiveSpaceId(), oldCol, id));
                                     showToast(`已重做：將「${shortText}」移至 [${newName}]`, 'fas fa-redo');
                                 }
                             });
 
-                            await setDoc(doc(db, 'artifacts', appId, 'users', currentUser.uid, targetCol, id), dataToMove);
+                            await setDoc(doc(db, 'artifacts', appId, 'users', getActiveSpaceId(), targetCol, id), dataToMove);
                             await copyCardDetails(oldCol, targetCol, id, id);
-                            await deleteDoc(doc(db, 'artifacts', appId, 'users', currentUser.uid, oldCol, id));
+                            await deleteDoc(doc(db, 'artifacts', appId, 'users', getActiveSpaceId(), oldCol, id));
                             showToast(`已將「${shortText}」移至 [${newName}]`, 'fas fa-exchange-alt');
                         } catch(err) { 
                             console.error(err); 
@@ -2922,18 +3083,18 @@
                     order: Date.now() 
                 };
 
-                const docRef = await addDoc(collection(db, 'artifacts', appId, 'users', currentUser.uid, targetCollection), newDocData);
+                const docRef = await addDoc(collection(db, 'artifacts', appId, 'users', getActiveSpaceId(), targetCollection), newDocData);
                 const newId = docRef.id;
                 const shortText = getShortText(newDocData.text);
                 const colName = getCollectionName(targetCollection);
                 
                 historyManager.push({
                     undo: async () => {
-                        await deleteDoc(doc(db, 'artifacts', appId, 'users', currentUser.uid, targetCollection, newId));
+                        await deleteDoc(doc(db, 'artifacts', appId, 'users', getActiveSpaceId(), targetCollection, newId));
                         showToast(`已還原：移除新增的卡片「${shortText}」`, 'fas fa-undo');
                     },
                     redo: async () => {
-                        await setDoc(doc(db, 'artifacts', appId, 'users', currentUser.uid, targetCollection, newId), newDocData);
+                        await setDoc(doc(db, 'artifacts', appId, 'users', getActiveSpaceId(), targetCollection, newId), newDocData);
                         showToast(`已重做：將卡片「${shortText}」新增至 [${colName}]`, 'fas fa-redo');
                     }
                 });
@@ -2957,7 +3118,7 @@
                 try { 
                     const col = pendingEditTarget.col;
                     const id = pendingEditTarget.id;
-                    const docRef = doc(db, 'artifacts', appId, 'users', currentUser.uid, col, id);
+                    const docRef = doc(db, 'artifacts', appId, 'users', getActiveSpaceId(), col, id);
                     const docSnap = await getDoc(docRef);
                     if (docSnap.exists()) {
                         const oldText = docSnap.data().text;
@@ -2965,14 +3126,14 @@
                         const shortNewText = getShortText(newText);
                         historyManager.push({
                             undo: async () => {
-                                await updateDoc(doc(db, 'artifacts', appId, 'users', currentUser.uid, col, id), {
+                                await updateDoc(doc(db, 'artifacts', appId, 'users', getActiveSpaceId(), col, id), {
                                     text: oldText,
                                     cardSearchText: oldText.toLocaleLowerCase('zh-Hant')
                                 });
                                 showToast(`已還原編輯：內容改回「${shortOldText}」`, 'fas fa-undo');
                             },
                             redo: async () => {
-                                await updateDoc(doc(db, 'artifacts', appId, 'users', currentUser.uid, col, id), {
+                                await updateDoc(doc(db, 'artifacts', appId, 'users', getActiveSpaceId(), col, id), {
                                     text: newText,
                                     cardSearchText: newText.toLocaleLowerCase('zh-Hant')
                                 });
@@ -3457,7 +3618,7 @@
                 'artifacts',
                 appId,
                 'users',
-                currentUser.uid,
+                getActiveSpaceId(),
                 payload.collectionName,
                 payload.itemId,
                 'details',
@@ -3468,11 +3629,11 @@
                 'artifacts',
                 appId,
                 'users',
-                currentUser.uid,
+                getActiveSpaceId(),
                 payload.collectionName,
                 payload.itemId
             );
-            const tagsRef = doc(db, 'artifacts', appId, 'users', currentUser.uid, 'settings', 'tags');
+            const tagsRef = doc(db, 'artifacts', appId, 'users', getActiveSpaceId(), 'settings', 'tags');
             const suggestions = [...(payload.result.matchedTags || []), ...(payload.result.suggestedTags || [])];
             await runTransaction(db, async transaction => {
                 const [noteSnapshot, cardSnapshot, tagsSnapshot] = await Promise.all([
@@ -3811,17 +3972,17 @@
 
                 if (uploadedImageUrl) newDocData.imageUrl = uploadedImageUrl;
 
-                const docRef = await addDoc(collection(db, 'artifacts', appId, 'users', currentUser.uid, targetCollection), newDocData);
+                const docRef = await addDoc(collection(db, 'artifacts', appId, 'users', getActiveSpaceId(), targetCollection), newDocData);
                 const newId = docRef.id;
                 const shortText = getShortText(newDocData.text);
                 const colName = getCollectionName(targetCollection);
                 historyManager.push({
                     undo: async () => {
-                        await deleteDoc(doc(db, 'artifacts', appId, 'users', currentUser.uid, targetCollection, newId));
+                        await deleteDoc(doc(db, 'artifacts', appId, 'users', getActiveSpaceId(), targetCollection, newId));
                         showToast(`已還原：移除新增的卡片「${shortText}」`, 'fas fa-undo');
                     },
                     redo: async () => {
-                        await setDoc(doc(db, 'artifacts', appId, 'users', currentUser.uid, targetCollection, newId), newDocData);
+                        await setDoc(doc(db, 'artifacts', appId, 'users', getActiveSpaceId(), targetCollection, newId), newDocData);
                         showToast(`已重做：將卡片「${shortText}」新增至 [${colName}]`, 'fas fa-redo');
                     }
                 });
@@ -4091,10 +4252,97 @@
             keyLayers.push({ name: 'settings', keys: modalKeys(closeSettingsModal) });
         }
 
+        async function createSpaceInvite() {
+            const emailInput = document.getElementById('space-invite-email');
+            const button = document.getElementById('create-space-invite-btn');
+            const result = document.getElementById('space-invite-result');
+            const email = emailInput.value.trim();
+            if (!email) {
+                document.getElementById('space-action-status').textContent = '請先輸入伴侶登入時使用的 Google 帳號 email。';
+                emailInput.focus();
+                return;
+            }
+            button.disabled = true;
+            button.textContent = '建立中…';
+            try {
+                const response = await createSpaceInviteCallable({spaceId: getActiveSpaceId(), email});
+                const inviteCode = response.data?.inviteCode || '';
+                result.replaceChildren();
+                const message = document.createElement('span');
+                message.textContent = `邀請碼（7 天有效）：${inviteCode}`;
+                const copyButton = document.createElement('button');
+                copyButton.type = 'button';
+                copyButton.className = 'ml-2 rounded-md bg-white px-2 py-1 font-bold text-rose-700 hover:bg-rose-50';
+                copyButton.textContent = '複製';
+                copyButton.addEventListener('click', async () => {
+                    await navigator.clipboard.writeText(inviteCode);
+                    copyButton.textContent = '已複製';
+                });
+                result.append(message, copyButton);
+                result.classList.remove('hidden');
+                emailInput.value = '';
+                document.getElementById('space-action-status').textContent = '請用安全的私訊把邀請碼交給受邀帳號。';
+            } catch (error) {
+                console.error('建立共同空間邀請失敗：', error);
+                document.getElementById('space-action-status').textContent = error?.message || '建立邀請失敗。';
+            } finally {
+                button.disabled = false;
+                button.textContent = '建立邀請';
+            }
+        }
+
+        async function removeSpaceMember(member) {
+            const label = member.displayName || member.email || '這位成員';
+            if (!window.confirm(`確定要將 ${label} 移出共同空間嗎？`)) return;
+            try {
+                await removeSpaceMemberCallable({
+                    spaceId: getActiveSpaceId(),
+                    memberUid: member.uid
+                });
+                document.getElementById('space-action-status').textContent = `${label} 已移出共同空間。`;
+            } catch (error) {
+                console.error('移除共同空間成員失敗：', error);
+                document.getElementById('space-action-status').textContent = error?.message || '移除成員失敗。';
+            }
+        }
+
+        async function acceptSpaceInvite() {
+            const input = document.getElementById('space-invite-code');
+            const button = document.getElementById('accept-space-invite-btn');
+            const inviteCode = input.value.trim();
+            if (!inviteCode) {
+                document.getElementById('space-action-status').textContent = '請貼上邀請碼。';
+                input.focus();
+                return;
+            }
+            button.disabled = true;
+            button.textContent = '加入中…';
+            try {
+                const response = await acceptSpaceInviteCallable({inviteCode});
+                const spaceId = response.data?.spaceId;
+                if (spaceId) localStorage.setItem(getSpaceStorageKey(), spaceId);
+                document.getElementById('space-action-status').textContent = '加入成功，正在切換共同空間…';
+                window.location.reload();
+            } catch (error) {
+                console.error('接受共同空間邀請失敗：', error);
+                document.getElementById('space-action-status').textContent = error?.message || '加入失敗。';
+                button.disabled = false;
+                button.textContent = '加入空間';
+            }
+        }
+
         document.getElementById('settings-btn').addEventListener('click', () => {
             closeSidebar();
             openSettingsModal();
         });
+        document.getElementById('space-status-btn').addEventListener('click', openSettingsModal);
+        document.getElementById('space-select').addEventListener('change', event => {
+            if (!currentUser || !currentSpaces.some(space => space.spaceId === event.target.value)) return;
+            localStorage.setItem(getSpaceStorageKey(), event.target.value);
+            window.location.reload();
+        });
+        document.getElementById('create-space-invite-btn').addEventListener('click', createSpaceInvite);
+        document.getElementById('accept-space-invite-btn').addEventListener('click', acceptSpaceInvite);
         document.getElementById('add-tag-btn').addEventListener('click', addDraftTag);
         document.getElementById('remove-suspicious-tags-btn').addEventListener('click', () => {
             const suspiciousTagIds = new Set(findSuspiciousTagIds(draftTags));
@@ -4403,7 +4651,7 @@
                 localStorage.setItem('cloudResearchEnabled', cloudResearchEnabled ? 'on' : 'off');
                 if (currentUser) {
                     await setDoc(
-                        doc(db, 'artifacts', appId, 'users', currentUser.uid, 'settings', 'tags'),
+                        doc(db, 'artifacts', appId, 'users', getActiveSpaceId(), 'settings', 'tags'),
                         { items: draftTags, updatedAt: Date.now() },
                         { merge: true }
                     );
@@ -4505,27 +4753,27 @@ ${JSON.stringify(inboxData, null, 2)}`;
                         data: item
                     });
                     
-                    await setDoc(doc(db, 'artifacts', appId, 'users', currentUser.uid, targetCol, item.id), docData);
+                    await setDoc(doc(db, 'artifacts', appId, 'users', getActiveSpaceId(), targetCol, item.id), docData);
                     await copyCardDetails('inbox', targetCol, item.id, item.id);
-                    await deleteDoc(doc(db, 'artifacts', appId, 'users', currentUser.uid, 'inbox', item.id));
+                    await deleteDoc(doc(db, 'artifacts', appId, 'users', getActiveSpaceId(), 'inbox', item.id));
                 }
                 
                 if (historyMappings.length > 0) {
                     historyManager.push({
                         undo: async () => {
                             for (const m of historyMappings) {
-                                await setDoc(doc(db, 'artifacts', appId, 'users', currentUser.uid, 'inbox', m.itemId), m.data);
+                                await setDoc(doc(db, 'artifacts', appId, 'users', getActiveSpaceId(), 'inbox', m.itemId), m.data);
                                 await copyCardDetails(m.newCol, 'inbox', m.itemId, m.itemId);
-                                await deleteDoc(doc(db, 'artifacts', appId, 'users', currentUser.uid, m.newCol, m.itemId));
+                                await deleteDoc(doc(db, 'artifacts', appId, 'users', getActiveSpaceId(), m.newCol, m.itemId));
                             }
                             showToast(`已還原 AI 整理，共 ${historyMappings.length} 個項目已放回 [收件匣]`, 'fas fa-undo');
                         },
                         redo: async () => {
                             for (const m of historyMappings) {
                                 const docData = buildCardMoveData(m.data);
-                                await setDoc(doc(db, 'artifacts', appId, 'users', currentUser.uid, m.newCol, m.itemId), docData);
+                                await setDoc(doc(db, 'artifacts', appId, 'users', getActiveSpaceId(), m.newCol, m.itemId), docData);
                                 await copyCardDetails('inbox', m.newCol, m.itemId, m.itemId);
-                                await deleteDoc(doc(db, 'artifacts', appId, 'users', currentUser.uid, 'inbox', m.itemId));
+                                await deleteDoc(doc(db, 'artifacts', appId, 'users', getActiveSpaceId(), 'inbox', m.itemId));
                             }
                             showToast(`已重做 AI 整理，共 ${historyMappings.length} 個項目已重新分類`, 'fas fa-redo');
                         }
@@ -4616,7 +4864,7 @@ ${JSON.stringify(inboxData, null, 2)}`;
             let noteData = null;
             try {
                 // Ensure doc and getDoc are imported from firestore, they already should be in index.html
-                const noteRef = doc(db, 'artifacts', appId, 'users', currentUser.uid, collectionName, itemId, 'details', 'note');
+                const noteRef = doc(db, 'artifacts', appId, 'users', getActiveSpaceId(), collectionName, itemId, 'details', 'note');
                 const noteSnap = await getDoc(noteRef);
                 if (noteSnap.exists()) {
                     noteData = noteSnap.data().data;
@@ -4647,7 +4895,7 @@ ${JSON.stringify(inboxData, null, 2)}`;
             
             try {
                 const outputData = await currentEditor.save();
-                const noteRef = doc(db, 'artifacts', appId, 'users', currentUser.uid, collectionName, cardId, 'details', 'note');
+                const noteRef = doc(db, 'artifacts', appId, 'users', getActiveSpaceId(), collectionName, cardId, 'details', 'note');
                 
                 // Use setDoc with merge:true in case details/note doesn't exist yet
                 await setDoc(noteRef, { 
@@ -4670,7 +4918,7 @@ ${JSON.stringify(inboxData, null, 2)}`;
             pendingEditorTitle = null;
 
             try {
-                const cardRef = doc(db, 'artifacts', appId, 'users', currentUser.uid, collectionName, cardId);
+                const cardRef = doc(db, 'artifacts', appId, 'users', getActiveSpaceId(), collectionName, cardId);
                 await updateDoc(cardRef, {
                     text: title,
                     cardSearchText: title.toLocaleLowerCase('zh-Hant')
@@ -4865,7 +5113,7 @@ ${JSON.stringify(inboxData, null, 2)}`;
                         'artifacts',
                         appId,
                         'users',
-                        currentUser.uid,
+                        getActiveSpaceId(),
                         collectionName,
                         itemId
                     ));

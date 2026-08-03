@@ -1,0 +1,63 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isSpaceMember(appId, spaceId) {
+      return signedIn() && exists(
+        /databases/$(database)/documents/artifacts/$(appId)/spaces/$(spaceId)/members/$(request.auth.uid)
+      );
+    }
+
+    function isPersonalBootstrap(appId, spaceId) {
+      return signedIn() && request.auth.uid == spaceId && !exists(
+        /databases/$(database)/documents/artifacts/$(appId)/spaces/$(spaceId)
+      );
+    }
+
+    match /artifacts/{appId}/spaces/{spaceId} {
+      allow read: if isSpaceMember(appId, spaceId);
+      allow write: if false;
+
+      match /members/{memberId} {
+        allow read: if isSpaceMember(appId, spaceId);
+        allow write: if false;
+      }
+
+      match /invites/{inviteId} {
+        allow read, write: if false;
+      }
+    }
+
+    match /artifacts/{appId}/spaceInvites/{inviteId} {
+      allow read, write: if false;
+    }
+
+    // Memberships are written only by trusted Callable Functions. A user may
+    // list only their own memberships to discover spaces they can open.
+    match /artifacts/{appId}/users/{userId}/memberships/{spaceId} {
+      allow read: if signedIn() && request.auth.uid == userId;
+      allow write: if false;
+    }
+
+    // Existing card paths are retained for a no-copy migration: a space ID is
+    // also the data-root ID. Personal space IDs equal their owner's UID.
+    match /artifacts/{appId}/users/{spaceId}/{collectionName}/{document=**} {
+      allow read, write: if collectionName != "memberships" &&
+        (isSpaceMember(appId, spaceId) || isPersonalBootstrap(appId, spaceId));
+    }
+
+    // Automation settings are private to the account that schedules work.
+    match /artifacts/{appId}/automationUsers/{userId} {
+      allow read: if signedIn() && request.auth.uid == userId;
+      allow write: if false;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

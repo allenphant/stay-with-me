@@ -1,10 +1,10 @@
-# 🧠 My Personal AI Brain (我的個人中樞)
+# 💞 Stay With Me（雙人共編生活空間）
 
 [![Live Demo](https://img.shields.io/badge/Live%20Demo-立即體驗-indigo?style=for-the-badge&logo=vercel)](https://allenphant.github.io/my-ai-brain/)
 
 🔗 **線上預覽/使用網址：[https://allenphant.github.io/my-ai-brain/](https://allenphant.github.io/my-ai-brain/)**
 
-這是一個極度輕量、零延遲、且跨裝置同步的「個人大腦緩衝區」與「點子收集處」。
+這個專案從 My Personal AI Brain 延伸而來，是一個極度輕量、零延遲、且跨裝置同步的雙人生活空間與點子收集處。
 透過結合 **Firebase 即時資料庫** 與 **Google Gemini API**，你可以隨時隨地將大腦中零碎的待辦事項、靈感或網址「傾倒」進收件匣，並透過「AI 魔法整理」一鍵自動將碎片歸類到專屬的區塊中。
 
 ## ☁️ 無人值守研讀後端（建置中）
@@ -21,6 +21,7 @@
 
 ## ✨ 核心特色 (Features)
 
+* 💞 **共同空間：** 每個帳號保有個人空間，空間擁有者可用指定 email 的七日邀請碼邀請伴侶；加入後雙方即時共編同一份卡片、分類、Tag 與詳細筆記。
 * ⚡ **無延遲傾倒 (Zero-Latency Dump)：** 採用樂觀更新 (Optimistic UI) 技術，輸入點子按下 Enter 瞬間清空輸入框，即使網路延遲也能像機關槍一樣連續輸入，絕不打斷思緒。
 * 🤖 **AI 魔法整理 (AI Auto-Categorization)：** 內建串接 Google Gemini API，一鍵將凌亂的收件匣碎片，精準分類至「待辦事項」、「待學習資源」、「點子庫」與「收藏貼文」。
 * 🔄 **跨裝置即時同步 (Real-time Sync)：** 底層使用 Firebase Firestore，手機端送出點子，電腦端畫面 0.1 秒內自動同步，無需重新整理。
@@ -56,17 +57,23 @@
 1. 前往 [Firebase Console](https://console.firebase.google.com/) 建立一個新專案。
 2. 註冊一個 Web 應用程式，並取得 `firebaseConfig` 金鑰。
 3. 於「驗證 (Authentication)」中啟用 **Google 登入**。
-4. 建立 **Firestore Database**，並設定安全性規則為：
+4. 建立 **Firestore Database**。不要使用「任何登入者皆可讀寫」的寬鬆規則；本專案以 `firestore.rules` 驗證個人 membership 與共同空間 membership：
    ```javascript
    rules_version = '2';
    service cloud.firestore {
      match /databases/{database}/documents {
-       match /{document=**} {
-         allow read, write: if request.auth != null; // 僅限登入者存取
+       function isSpaceMember(appId, spaceId) {
+         return request.auth != null && exists(
+           /databases/$(database)/documents/artifacts/$(appId)/spaces/$(spaceId)/members/$(request.auth.uid)
+         );
+       }
+       match /artifacts/{appId}/users/{spaceId}/{collectionName}/{document=**} {
+         allow read, write: if collectionName != "memberships" && isSpaceMember(appId, spaceId);
        }
      }
    }
    ```
+   完整規則、邀請資料的拒絕規則與部署順序請見 [共同空間部署指南](docs/SHARED_SPACES.md)。
 
 ### 2. 部署至 GitHub Pages
 1. 將本專案的 `index.html` Fork 或下載至你的本地端。
