@@ -53,6 +53,7 @@ test('production configuration is isolated from the My AI Brain Firebase project
     assert.match(appSource, /let appId = 'stay-with-me'/);
     assert.match(firebaseRc, /"default": "dating-with-viola"/);
     assert.match(deployScript, /PROJECT_NUMBER="1060778384338"/);
+    assert.match(deployScript, /--only functions:research-backend/);
     assert.match(jobPolicy, /const APP_ID = "stay-with-me"/);
     assert.doesNotMatch(productionSources, /my-ai-brain-6867e|my-personal-ai-brain|755512158785/);
 });

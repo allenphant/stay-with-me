@@ -187,7 +187,7 @@ CONFIRM_BILLABLE_PROJECT=dating-with-viola npm run deploy:functions
 
 ```bash
 npx firebase-tools deploy \
-  --only functions \
+  --only functions:research-backend \
   --project dating-with-viola
 ```
 

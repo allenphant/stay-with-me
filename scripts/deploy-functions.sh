@@ -19,7 +19,7 @@ node scripts/cloud-preflight.mjs
 
 # Deploy first so a brand-new project creates its default Gen2 runtime service
 # account before the script grants the task-specific IAM edges below.
-npx firebase-tools deploy --only functions --project "${PROJECT_ID}"
+npx firebase-tools deploy --only functions:research-backend --project "${PROJECT_ID}"
 
 # enqueueCardResearch creates an authenticated Cloud Task using the same
 # runtime service account. Keep all three required IAM edges reproducible:
