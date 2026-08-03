@@ -2,7 +2,7 @@
 
 const crypto = require("node:crypto");
 
-const APP_ID = "my-personal-ai-brain";
+const APP_ID = "stay-with-me";
 const PROMPT_VERSION = "cloud-research-v2-openrouter";
 const DEFAULT_TIME_ZONE = "Asia/Taipei";
 const MAX_CARD_TEXT_LENGTH = 20_000;

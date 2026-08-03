@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 
-const EXPECTED_PROJECT = 'my-ai-brain-6867e';
+const EXPECTED_PROJECT = 'dating-with-viola';
 const errors = [];
 const warnings = [];
 

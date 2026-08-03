@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-PROJECT_ID="my-ai-brain-6867e"
-PROJECT_NUMBER="755512158785"
+PROJECT_ID="dating-with-viola"
+PROJECT_NUMBER="1060778384338"
 REGION="${FUNCTION_REGION:-asia-east1}"
 TASK_QUEUE="runResearchJob"
 TASK_FUNCTION="runResearchJob"

@@ -71,18 +71,18 @@
 
         // --- Firebase 初始化 ---
         let firebaseConfig;
-        let appId = 'my-personal-ai-brain'; 
+        let appId = 'stay-with-me';
         if (typeof __firebase_config !== 'undefined') {
             firebaseConfig = JSON.parse(__firebase_config);
             appId = typeof __app_id !== 'undefined' ? __app_id : appId;
         } else {
             firebaseConfig = {
-                apiKey: "AIzaSyC30YPS_CkGVBS8IBrq74sBW0pkP1-ev6w",
-                authDomain: "my-ai-brain-6867e.firebaseapp.com",
-                projectId: "my-ai-brain-6867e",
-                storageBucket: "my-ai-brain-6867e.firebasestorage.app",
-                messagingSenderId: "755512158785",
-                appId: "1:755512158785:web:8376054556e01717f9b4c0"
+                apiKey: "AIzaSyDh4lQG2T1crYwSCQCfTtBvIDjQ1enc2i0",
+                authDomain: "dating-with-viola.firebaseapp.com",
+                projectId: "dating-with-viola",
+                storageBucket: "dating-with-viola.firebasestorage.app",
+                messagingSenderId: "1060778384338",
+                appId: "1:1060778384338:web:a89a535bbaadb12b5cc60b"
             };
         }
 

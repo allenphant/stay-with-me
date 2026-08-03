@@ -21,7 +21,7 @@ artifacts/{appId}/spaceInvites/{inviteCode}
 
 ## 在 Firebase Console 確認目前規則
 
-1. 打開 Firebase Console，選擇 `my-ai-brain-6867e`。
+1. 打開 Firebase Console，選擇顯示名稱為 `Stay With Me`、project ID 為 `dating-with-viola` 的專案。
 2. 進入 **Build → Firestore Database → Rules**。
 3. 查看上方目前發布中的規則，不要只看 Rules playground。
 4. 如果看到涵蓋所有文件的 `allow read, write: if request.auth != null`，代表任何登入此 Firebase project 的人都可能通過規則，應換成 repository 的 `firestore.rules`。

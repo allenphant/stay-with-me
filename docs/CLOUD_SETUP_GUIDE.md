@@ -1,11 +1,12 @@
-# My AI Brain Google Cloud／Firebase 設定指南
+# Stay With Me Google Cloud／Firebase 設定指南
 
 > 本指南刻意把會產生帳務或權限變更的步驟留給專案擁有者確認。  
-> 所有 CLI 指令都固定指定 `my-ai-brain-6867e`，避免誤用其他 gcloud 預設專案。
+> 所有 CLI 指令都固定指定 `dating-with-viola`，避免誤用其他 gcloud 預設專案。
 
 ## 0. 已確認的現況
 
-- 現有 Firebase／Google Cloud project ID：`my-ai-brain-6867e`
+- Firebase／Google Cloud 顯示名稱：`Stay With Me`
+- 不可變更的 project ID：`dating-with-viola`
 - 現有前端：GitHub Pages
 - 現有資料庫：Cloud Firestore
 - 現有登入：Firebase Authentication
@@ -23,7 +24,7 @@
 兩邊都選擇：
 
 ```text
-my-ai-brain-6867e
+dating-with-viola
 ```
 
 Firebase 專案本身就是 Google Cloud 專案，不要再建立一個新專案。
@@ -78,7 +79,7 @@ Google Cloud Console
 建議：
 
 ```text
-Scope: project my-ai-brain-6867e
+Scope: project dating-with-viola
 Monthly budget: US$5
 Thresholds: 50%、90%、100%
 Forecasted spend: 開啟
@@ -115,7 +116,7 @@ npm run cloud:preflight
 確認 project ID 正確後，再啟用：
 
 ```bash
-CONFIRM_BILLABLE_PROJECT=my-ai-brain-6867e npm run cloud:enable-apis
+CONFIRM_BILLABLE_PROJECT=dating-with-viola npm run cloud:enable-apis
 ```
 
 會啟用：
@@ -136,9 +137,9 @@ CONFIRM_BILLABLE_PROJECT=my-ai-brain-6867e npm run cloud:enable-apis
 ## 7. 設定伺服器端 Secrets
 
 ```bash
-npx firebase-tools functions:secrets:set GEMINI_API_KEY --project my-ai-brain-6867e
-npx firebase-tools functions:secrets:set JINA_API_KEY --project my-ai-brain-6867e
-npx firebase-tools functions:secrets:set OPENROUTER_API_KEY --project my-ai-brain-6867e
+npx firebase-tools functions:secrets:set GEMINI_API_KEY --project dating-with-viola
+npx firebase-tools functions:secrets:set JINA_API_KEY --project dating-with-viola
+npx firebase-tools functions:secrets:set OPENROUTER_API_KEY --project dating-with-viola
 ```
 
 正式 Worker 以 Jina 擷取一般網址、OpenRouter 免費模型整理，並保留 Gemini secret
@@ -148,7 +149,7 @@ npx firebase-tools functions:secrets:set OPENROUTER_API_KEY --project my-ai-brai
 未來使用 Mistral 時：
 
 ```bash
-npx firebase-tools functions:secrets:set MISTRAL_API_KEY --project my-ai-brain-6867e
+npx firebase-tools functions:secrets:set MISTRAL_API_KEY --project dating-with-viola
 ```
 
 不要把 Key 寫入：
@@ -179,7 +180,7 @@ Emulator 不會呼叫正式 Scheduler。未設定 secrets 時，研讀 Worker �
 只部署 Functions，不碰 GitHub Pages 和 Firestore rules：
 
 ```bash
-CONFIRM_BILLABLE_PROJECT=my-ai-brain-6867e npm run deploy:functions
+CONFIRM_BILLABLE_PROJECT=dating-with-viola npm run deploy:functions
 ```
 
 腳本等同：
@@ -187,7 +188,7 @@ CONFIRM_BILLABLE_PROJECT=my-ai-brain-6867e npm run deploy:functions
 ```bash
 npx firebase-tools deploy \
   --only functions \
-  --project my-ai-brain-6867e
+  --project dating-with-viola
 ```
 
 部署後 Firebase CLI 會建立：
