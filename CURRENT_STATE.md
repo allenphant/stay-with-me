@@ -61,10 +61,11 @@
 * **已完成｜空間改名功能**：`spaces` 文件在 `firestore.rules` 是 `allow write: if false`，客戶端不能直寫，因此新增 Callable **`renameSpace`**（owner-only）。
   * 空間名稱有**反正規化**：同時存在 `spaces/{id}.name` 與每位成員的 `users/{uid}/memberships/{spaceId}.name`，改名需以 batch 一起更新，否則另一方看到舊名稱。
   * 前端新增 `space-rename-row`（僅 owner 可見）；輸入框在使用者正在編輯時不會被 re-render 覆蓋。
-* **待辦｜部署改名結果**：前端推 `main` 由 GitHub Pages 自動建置；`functions/src/providers.js` 的改動需 `firebase deploy --only functions:research-backend` 才會生效。
-* **待辦｜清理舊專案**：從 `my-ai-brain-6867e`（region `asia-east1`）移除誤部署的 `ensurePersonalSpace`、`createSpaceInvite`、`acceptSpaceInvite`、`removeSpaceMember`；**不要動**該專案既有的 5 個 research Functions。
-  * 已驗證安全：舊站線上 `app.js` 對這 4 個 Function 的引用次數為 0，刪除不影響 My AI Brain。
-  * 註：刪除指令被 Claude Code 權限機制擋下，需由使用者自行執行。
+* **已完成｜清理舊專案**：已從 `my-ai-brain-6867e`（`asia-east1`）刪除誤部署的 `ensurePersonalSpace`、`createSpaceInvite`、`acceptSpaceInvite`、`removeSpaceMember`。刪除前已驗證舊站線上 `app.js` 對這 4 個的引用次數為 0。刪除後該專案剩下正好 5 個 research Functions，`dating-with-viola` 未受影響。
+* **已完成｜前端部署**：PR [#3](https://github.com/allenphant/stay-with-me/pull/3) 已 squash 合併至 `main`（`493e898`）。
+  * **踩雷紀錄**：PR #2 是 squash 合併，`main` 上的 `a4798fd` 已含分支前三個 commit 的內容，直接合併 PR #3 會衝突（`the merge commit cannot be cleanly created`）。解法是從 `origin/main` 開新分支 cherry-pick 新 commit、驗證 `git diff` 與原 commit 為空後 force-with-lease 更新 PR 分支。
+* **待辦｜後端部署**：`renameSpace`（新增）與 `providers.js` 的品牌字串尚未上線，需執行 `firebase deploy --only functions:research-backend --project dating-with-viola`。
+  * firebase-tools 15.25.1 已安裝於本機，但 **Firebase CLI 有獨立登入，不吃 gcloud 憑證**，需先 `firebase login`。
 * **卡點 (Blocker)**：無。
 
 ## 避坑指南 (Failed Approaches)
