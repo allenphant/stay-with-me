@@ -11,8 +11,8 @@ const DEFAULT_SYSTEM_PROMPT = [
 
 const OPENROUTER_MODELS_URL = "https://openrouter.ai/api/v1/models";
 const OPENROUTER_CHAT_URL = "https://openrouter.ai/api/v1/chat/completions";
-const OPENROUTER_APP_URL = "https://allenphant.github.io/my-ai-brain/";
-const OPENROUTER_APP_NAME = "my-ai-brain";
+const OPENROUTER_APP_URL = "https://allenphant.github.io/stay-with-me/";
+const OPENROUTER_APP_NAME = "stay-with-me";
 const AUTO_FREE_MODEL = "auto:free";
 const FREE_MODEL_CACHE_TTL_MS = 60 * 60 * 1000;
 let cachedFreeModels = null;

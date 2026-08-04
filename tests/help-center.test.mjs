@@ -13,7 +13,7 @@ test('help center documents the core workflow, deployment, data boundary, and li
     assert.match(html, /收集 → 研讀 → 整理 → 找回/);
     assert.match(html, /Jina Reader 擷取原文/);
     assert.match(html, /手動審核.*自動通過/s);
-    assert.match(html, /https:\/\/allenphant\.github\.io\/my-ai-brain\//);
+    assert.match(html, /https:\/\/allenphant\.github\.io\/stay-with-me\//);
     assert.match(html, /Firebase Cloud Firestore/);
     assert.match(html, /目前瀏覽器 localStorage/);
     assert.match(html, /影片不會被 Jina 轉錄/);

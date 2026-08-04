@@ -1,217 +1,114 @@
-# Stay With Me 獨立 Firebase 遷移中
+# 修正 Stay With Me Firebase 登入 referrer 限制（後端與資料隔離已完成，登入卡住）
 
-> **更新時間**：2026-08-03
-> **專案核心**：以 Vanilla JS 與 Firebase 打造的雙人共編生活空間。
-
-## 2026-08-03 Firebase 專案隔離
-
-* **正式目標專案**：顯示名稱 `Stay With Me`，不可變更的 project ID 為
-  `dating-with-viola`，project number 為 `1060778384338`；Firestore 位於
-  `asia-east1`，目前沒有 collection，Authentication 尚未啟用，也沒有使用者。
-* **資料完全隔離**：前端 Firebase config、Functions 部署腳本、`.firebaserc` 與
-  雲端研讀資料命名空間全面改用新專案；資料根由 `my-personal-ai-brain` 改為
-  `stay-with-me`，不會再讀取 My AI Brain 的字卡。
-* **舊專案待清理**：`my-ai-brain-6867e` 曾誤部署共同空間 Callable Functions，
-  但共同空間 Firestore Rules 未部署。新專案端到端驗證完成後，移除舊專案新增的
-  四個共同空間 Functions；不要刪除既有研究 Functions。
-* **發布狀態**：GitHub Pages 已啟用，但目前正式頁面仍指向舊 Firebase config；
-  新 config 尚未合併與部署，遷移完成前不要在該頁新增、修改或刪除字卡。
-
-## 2026-08-03 共同空間
-
-* **雙人共編資料邊界**：保留既有 `users/{uid}` 資料，將資料根 ID 視為 `spaceId`；owner 原卡片不用搬移，受邀成員取得 membership 後即可共編。
-* **成員與邀請**：新增 owner personal-space bootstrap、指定 Google 帳號 email 的七日邀請碼、接受邀請、空間切換、成員清單與 owner 移除成員。
-* **後端授權**：邀請內容不允許前端直接讀寫；所有成員異動均由驗證 Firebase Auth 與 space membership 的 Callable Functions 執行，空間最多兩人。
-* **安全規則版本化**：新增 `firestore.rules` 與 `firebase.json` 設定，取代 README 舊有的「任何登入者皆可讀寫」範例。部署與 Console 驗證流程記錄於 `docs/SHARED_SPACES.md`。
-* **雲端研讀相容**：Callable、Scheduler、Cloud Tasks job 與待審核監聽均攜帶目前 `spaceId`，並在後端驗證排程帳號仍是空間成員。
-* **驗證**：共同空間版本曾通過 Node 語法檢查、完整單元測試與 Firestore Emulator
-  規則編譯；獨立 Firebase 遷移完成後需重新執行全部驗證。
-
-## 2026-07-28 最新狀態
-
-* **雲端文字研讀改用 OpenRouter**：一般網址固定由 Jina Reader 擷取公開文字，
-  後端再從 OpenRouter `/models` 動態挑選支援文字、至少 16K context、
-  結構化輸出且 prompt／completion 單價皆為 0 的模型；清單於 Function instance
-  內快取 1 小時，前三個候選交由 OpenRouter model fallback 依序嘗試。實際使用的
-  model 會寫進 Firestore job，未來新免費模型不需改版才能被選到。
-* **OpenRouter Secret 與錯誤邊界**：Worker 綁定 Secret Manager
-  `OPENROUTER_API_KEY`。401／403 立即以 `authentication_failed` 終止，402 以
-  `billing_credits_depleted` 終止，404 模型不存在終止；只有 429、逾時與 5xx
-  交給 Cloud Tasks 有限重試。程式只會選取價格明確為 0 的模型，不會自行切到
-  付費模型。
-* **YouTube 改為 NotebookLM 手動交接**：YouTube 不再送 Gemini Video 或文字模型
-  猜測，雲端工作直接產生 `尚未解析的影片` 待審結果。YouTube 卡片新增
-  `NotebookLM` 按鈕，點擊會複製原網址並開啟 NotebookLM，讓使用者貼到
-  「新增來源」。此流程不假裝自動把 NotebookLM 結果寫回。
-* **舊失敗工作可重新建立**：雲端 job prompt version 已升為
-  `cloud-research-v2-openrouter`，所以先前因 Gemini 額度終止的相同卡片會建立
-  新 OpenRouter 工作，不會被舊 `failed_terminal` job 擋住。
-* **驗證**：Node 單元測試 13/13 通過；手機尺寸完整瀏覽器回歸測試通過，
-  NotebookLM 按鈕只出現在 YouTube 卡，會複製正確網址、開啟正確入口且沒有
-  page error。正式 Functions 部署後以獨立暫時 UID 執行端到端 smoke test，
-  工作成功進入 `pending_review`，provider 為 `jina+openrouter`，實際模型為
-  `google/gemma-4-26b-a4b-it:free`，TL;DR／評價／Tags 結構完整；暫時卡片、
-  job 與 task 已全數清除。
-* **Cloud Tasks IAM 已納入部署流程**：部署腳本會替 Functions runtime service
-  account 補上 `roles/cloudtasks.enqueuer`、自身 `roles/iam.serviceAccountUser`
-  與 `runResearchJob` invoker，避免 callable 能執行但無法建立已驗證 Task。
-  Invoker 由部署後的 `gcloud` 指令設定；不在 `onTaskDispatched` options 重複
-  宣告，以避開 Firebase CLI 15.24.0 更新 Gen2 task function 時的 IAM 錯誤。
-* **修正跨區佇列定位**：Firebase Admin SDK 的 `getFunctions()` 不接受 region
-  第二參數；舊程式因此忽略 `asia-east1` 並誤找 `us-central1` queue。現在改用
-  `locations/asia-east1/functions/runResearchJob` 資源名稱，對準已部署佇列。
-* **送入失敗可診斷**：`enqueueCardResearch` 不再用 `message` 欄位遮蔽底層例外；
-  Cloud Logging 會保留錯誤類別、code、details 與 stack，前端也會區分缺少
-  Tasks Enqueuer、service account actAs、worker invoker 與 queue 不存在。
-* **429 分流**：一般 provider rate limit 仍由 Cloud Tasks 有限退避；Gemini
-  明確回傳 `prepayment credits are depleted` 時改為 `billing_credits_depleted`
-  終止錯誤，不再浪費後續自動重試。
-* **舊 Gemini 路徑的生產端驗證**：Functions 已部署至 asia-east1。以原本失敗的 GitHub
-  研讀工作重送後，Cloud Tasks 成功呼叫 worker、Jina Secret 成功讀取、Gemini
-  回應也成功分類；因專案預付額度耗盡，工作正確停在 `failed_terminal` /
-  `billing_credits_depleted`，worker HTTP 204，佇列沒有殘留重試。Queue 維持
-  concurrency 1、每 60 秒最多派送一張。
-
-## 2026-07-27 狀態
-
-* **Google Cloud 已正式部署**：Firebase 專案 `my-ai-brain-6867e` 已升級 Blaze，
-  設定每月 US$5 預算通知；四個 asia-east1 Functions、每 10 分鐘 Scheduler
-  與 `runResearchJob` Cloud Tasks queue 均為 ACTIVE。
-* **雲端吞吐護欄**：`runResearchJob` 維持 min instances 0、max instances 1；
-  Cloud Tasks concurrency 1、每 60 秒最多派送一張、最多嘗試 3 次，退避
-  60～3600 秒且最長 24 小時。
-* **前端雲端模式**：設定頁新增「雲端背景研讀」開關。啟用後，單卡按鈕改為
-  「雲端研讀」，自動週期透過 callable 同步至後端；關閉網頁或電腦後工作仍會
-  在 Cloud Tasks 繼續。預設仍關閉，舊瀏覽器前景研讀保留作為備援。
-* **跨裝置待審核**：前端即時監聽 Firestore `researchJobs` 的 `pending_review`，
-  將雲端結果轉為既有預覽格式並顯示原卡片文字、原網址、TL;DR、評價、詳細內容、
-  限制與 Tag 建議。核准才 append 到詳細筆記並標記 `succeeded`；捨棄標記
-  `discarded`，兩者都不會重複排程相同來源內容。
-* **驗證**：Node 測試全數通過；手機尺寸無頭瀏覽器回歸測試通過，包含既有快取、
-  冷卻、配額暫停、搜尋、Tag、返回 UX，以及新雲端按鈕 callable 呼叫，無 page error。
-
-* **成本與設定文件**：新增 `docs/CLOUD_COST_BUDGET.md`、`docs/CLOUD_SETUP_GUIDE.md`
-  與 `docs/CLOUD_RESEARCH_ARCHITECTURE.md`，記錄免費額度估算、US$5 預算護欄、
-  禁止設定與逐步部署流程。
-* **安全部署入口**：Firebase Functions 專案與部署腳本固定 project
-  `my-ai-brain-6867e`，並要求 `CONFIRM_BILLABLE_PROJECT`，避免誤部署至其他專案。
-* **後端研讀骨架**：Callable Functions 驗證 Firebase Auth；單一 Scheduler 找出
-  到期使用者；Cloud Tasks 以 concurrency 1 執行 Jina → OpenRouter 免費模型；
-  YouTube 降級為 NotebookLM 手動交接。結果先寫入 Firestore `pending_review`，
-  不直接修改卡片。
-* **成本與失敗護欄**：預設關閉排程、每批 20、每日 50、每月預估 US$5、影片
-  每日保守預留 60 分鐘、instance 0～1、Tasks 約每 60 秒最多派送一張、相同來源
-  冪等、卡片變更時取消舊工作、429／5xx 交由 Tasks 有限退避。
-* **仍刻意未開啟**：雲端自動通過與 Mistral 後端 adapter 尚未開啟；第一階段固定
-  手動審核，先避免無人值守時直接改寫卡片。
-
-## 2026-07-23 最新狀態
-
-* **定期自動回補**：設定頁可選關閉、每 6／12 小時、每天、每 3 天或每週，自動挑選所有分類中尚未研讀且沒有待審結果的單一網址卡片。可隨時按「現在檢查並執行」。
-* **純前端排程邊界**：排程由目前登入的瀏覽器執行；頁面關閉、裝置休眠或瀏覽器凍結時不會在伺服器背景運行。重新開啟或回到頁面後會檢查是否逾期並補做。若要真正無人值守，後續需移至 Cloud Functions／Cloud Scheduler。
-* **壞卡隔離**：相同卡片內容跨三次排程皆研讀失敗時，會從自動排程隔離並寫入研讀紀錄，提醒檢查公開權限、單一網址與內容結構。卡片文字或網址修改後，來源指紋改變即自動解除隔離；設定頁也能手動清除失敗紀錄。
-* **亂碼 Tag 根因與防護**：模型曾把既有 Tag 的內部 ID（如 `tag-5wcwmz`）放進 `suggestedTags`，舊 parser 因驗證不足而當成新名稱。新版會把已知 ID 還原成既有 Tag、拒絕其他 ID 形狀的新名稱；設定頁會偵測並可移除既有可疑 Tag。
-* **未來 Agent 路徑**：目前主要資料庫為 Firebase Cloud Firestore。建議以 Cloud Functions／Cloud Run 建立受控工具 API，讓 Agent 只能搜尋、讀取、提出修改與確認寫入；大量內容可在 Firestore 儲存 embeddings 並建立 Vector Search 索引。
-
-## 2026-07-22 狀態
-
-* **統一故障決策層**：Jina、Gemini、Mistral、Firestore 與瀏覽器儲存錯誤均先分類再決定停止、暫停、有限重試或跳過，不再由各畫面各自判斷。
-* **不再無限重送**：Key 過期、權限、帳務與模型下架會立即停止佇列；429 保留同一張並按服務時間或 5／15／60 分鐘退避，但三次仍失敗就停止整條佇列；斷網、逾時與 5xx 只以 15／60／180 秒重試三次，仍失敗才跳過。
-* **來源與儲存保護**：Jina 匿名封鎖會要求設定 Key 並停止；來源 404／不相容只跳過該卡。Firebase 自動寫入失敗會先降級保存到本機待審，連本機也無法保存才停止，避免研讀結果遺失。
-* **研讀紀錄頁**：頂部 Tag 頁與側欄可開啟「研讀紀錄」，保留目前瀏覽器最近 200 筆成功、快取、冷卻、重試、跳過與停止事件，可按嚴重度篩選。每筆包含原卡文字、網址、服務／模型、決策原因與建議處理方式，並會遮蔽 API Key。
-* **冷卻時機修正**：只有 Jina 成功取得可整理文字、即將呼叫 Gemini／Mistral 時才開始模型冷卻；Jina 擷取失敗不再白白消耗 60 秒冷卻。
-* **內建操作說明**：限制頁新增故障處理矩陣，直接說明各類錯誤的佇列去向。
-
-## 2026-07-21 狀態
-
-* **網站內使用說明**：頂部與側欄新增「使用說明」頁籤，以「收集 → 研讀 → 整理 → 找回」整理快速上手、單張／批次 AI 網址研讀、搜尋與 Tag、模型與 Key、部署與資料邊界、快捷鍵及限制。說明頁納入 overlay history，手機返回、桌面 Escape、關閉按鈕與瀏覽器前進／後退都能正確運作。
-* **API Key 明確保存**：Gemini、Mistral、Jina 三組 Key 各自提供「儲存 Key」按鈕與即時狀態；保存成功會明確顯示只儲存在目前瀏覽器，關閉設定再開仍會載入。輸入內容若與已保存值不同，會提示尚未保存，避免誤以為模型查詢等同保存。
-* **Gemini／Mistral 可切換**：一般 AI 整理仍使用 Gemini；網址研讀整理服務可獨立選擇 Gemini 或 Mistral。Mistral API Key 與網址研讀模型在設定頁分開保存，預設建議模型為 `mistral-small-2603`。
-* **Mistral 動態模型清單**：設定頁會用使用者的 Mistral Key 即時查詢 `/v1/models`，列出可用的 chat completion 模型，因此未來新增模型不需要改版才能選取。
-* **資料流維持不變**：Jina Reader 仍只負責擷取公開文字；選定的 Gemini 或 Mistral 模型負責輸出相同的結構化 TL;DR、評價、詳細筆記與 Tag 建議。快取 context 已加入 provider，切換服務不會誤用另一家的舊結果。
-* **429 真正暫停佇列**：Gemini 或 Mistral 回傳配額不足時，佇列保留目前卡片、不增加失敗數也不前進下一張；連續配額失敗依 5／15／60 分鐘退避，若 API 提供更長的 retry delay 則採更長時間。成功一次後重設退避，手動停止會清除重試計時。
-* **Mistral Key 固定可見**：Mistral API Key 區塊已移到網址研讀服務選單正下方，無論目前選擇 Gemini 或 Mistral 都會顯示，不再需要先切換服務才找得到。
-* **跨分類全文搜尋**：首頁頂部與側欄新增搜尋入口（桌面亦可用 `Ctrl/Cmd + K`），即時搜尋卡片文字／網址、`researchSearchText` AI 研讀索引與 Tag 名稱。多個空白分隔關鍵字採 AND 條件，結果依原分類分組並依標題、Tag、AI 索引的相關度排序。
-* **搜尋 UX**：搜尋結果會標示命中來源並顯示 AI 索引片段；點開卡片後，手機返回鍵只關閉編輯器並回到原搜尋結果，再返回才關閉搜尋。Escape、關閉按鈕與瀏覽器前進／後退皆納入 overlay history。
-
-* **跨分類 Tag 瀏覽**：頂部與側欄提供 Tag 瀏覽入口，使用既有 Firestore snapshot 的記憶體快取整合收件匣與所有自訂分類，不增加額外查詢。
-* **篩選方式**：可多選 Tag，預設「符合全部（AND）」並可切換「符合任一（OR）」；未選 Tag 時顯示所有已有 Tag 的卡片。
-* **結果呈現**：結果依卡片原分類分組，空分類自動隱藏，顯示每個 Tag 的跨分類使用數量；卡片仍可開啟詳細筆記或觸發 AI 研讀。
-* **返回 UX**：Tag 瀏覽納入瀏覽器 history 與鍵盤層，手機返回鍵、桌面 Escape、關閉按鈕皆只關閉 Tag 頁，前進可重新開啟。
-* **選擇性回補**：Tag 瀏覽的「待回補」頁只列出含單一網址且缺少 Tag 或研讀索引的卡片；可逐一勾選或全選後建立研讀佇列。
-* **非阻塞 overnight 佇列**：研讀成功後不再等待逐張確認，完整結果會保存到同一瀏覽器的「待審核」區並自動繼續下一張；關閉 Tag 瀏覽不會停止佇列，執行期間會盡力取得 Screen Wake Lock 並在離頁時警告。
-* **延後審核與安全寫入**：待審結果可日後逐張預覽、勾選 Tag、確認追加或捨棄；取消預覽會保留結果，只有確認追加才會更新詳細筆記與卡片 Tag。沿用 60 秒冷卻與 24 小時快取；一般錯誤卡片跳過，配額錯誤停在原卡退避，缺少所選服務的 API Key 或無法持久保存結果時停止。
-* **手動／自動通過**：回補頁可在啟動前選擇「手動審核」或「自動通過」。手動模式把結果送往待審；自動模式直接追加詳細筆記並套用全部建議 Tag，寫入失敗則降級送往待審，不阻塞後續卡片。
-* **背景進度可視化**：佇列不再與審核視窗耦合；每張完成後依 60 秒冷卻自動處理下一張，主頁顯示浮動進度與倒數，點擊可返回回補頁。
-* **影片降級**：YouTube／Vimeo 影片網址不再送 Jina 或 Gemini 產生空泛內容，固定回覆「影片無法解析。」並只建議／套用 `尚未解析的影片` Tag。
-* **審核來源資訊**：預覽與待審卡片會顯示原始卡片內容、來源標題及可點擊原網址；YouTube 標題會盡力透過 oEmbed 取得。
-
-## 2026-07-15 AI 研讀狀態
-
-* **網址研讀資料流**：卡片網址先交給 Jina Reader 擷取公開網站／社群貼文文字，再把擷取內容交給獨立設定的 Gemini 模型整理；不再由 Gemini Search 猜讀網址。
-* **影片限制**：Jina 只保留影片連結與頁面周邊文字，不轉錄影片。若有文字則整理文字並標示「影片內容未解析」；若只有影片則不呼叫 Gemini、不產生推測摘要。
-* **Prompt 設定**：系統設定可編輯網址研讀 System Prompt，預設為繁體中文、純文字、TL;DR、一句話評價、詳細筆記，並禁止猜測未解析媒體；可一鍵恢復預設。
-* **Tag 管理**：使用者可在設定新增、重新命名、刪除 tag。Gemini 優先匹配既有 tag，也可建議新 tag；預覽時逐一勾選，只有勾選並確認的新 tag 才會建立。
-* **儲存位置**：研讀文字仍只 append 到卡片「詳細筆記」，主卡片文字與原網址保持簡潔。卡片只存穩定的 `tagIds`，名稱即時由 `users/{uid}/settings/tags` catalog 解析，因此重新命名或刪除不會留下過期標籤。搜尋資料拆成 `cardSearchText` 與可持續追加的 `researchSearchText`，tag 搜尋則由 `tagIds + catalog` 即時解析，避免再次研讀時覆蓋舊索引。
-* **快取與錯誤**：快取會納入網址、Gemini 模型、System Prompt 與 tag catalog；任一變更都不沿用舊預覽。Jina 擷取錯誤、Gemini 配額錯誤與空／損壞回應分開顯示。
-* **模型清單**：網址研讀模型會列出即時取得的所有 `generateContent` 模型；Search 支援測試清單也保留已確認模型，方便重新測試 Gemini 2.5 Flash。
-
-## 待辦／未來方向
-
-* **Tag filter 後續**：可再加入 Tag 合併工具與每個 Tag 的排序方式。
-* **搜尋後續**：目前本地搜尋已涵蓋卡片文字、AI 研讀索引與 Tag。手動撰寫但尚未建立索引的 Editor.js 詳細筆記不會被全文搜尋；若需要，下一階段應在詳細筆記儲存時同步維護純文字索引，再評估以 Jina Embeddings 加入語意搜尋。
-* **影片研讀**：目前刻意不處理影片。若未來需要，應另接字幕／逐字稿或影片理解服務，不能把 Jina Reader 當成影片轉錄器。
-* **待審核同步**：本機前景佇列仍將結果存在啟動瀏覽器；雲端模式的結果已保存於
-  Firestore，可跨裝置審核。
-
----
-
-以下內容是 2026-07-09 的歷史快照；其中 Gemini Search Grounding 直讀網址的方案已由上方 Jina Reader → Gemini 流程取代。
+> **更新時間**：2026-08-03 17:26
+> **專案核心**：以 Vanilla JS、Firebase Authentication／Firestore／Functions 與 GitHub Pages 打造的雙人共編生活空間。
 
 ## 本次對話目標
 
-實作外部分享串接（PWA/Share Target）、自訂 App 縮圖、擴充分類圖示，並修正編輯狀態下 `Ctrl` 快捷鍵打架與全選問題，以及優化分類 `+` 按鈕之新增體驗。
+將 `my-ai-brain` 模板延伸為獨立的情侶共編空間，加入成員與邀請機制、隔離兩個產品的 Firebase 資料，完成新專案後端部署，並排除正式網站的登入問題。
 
 ## 已完成任務
 
-* **[PWA 分享串接]**：升級為 PWA，新增 `manifest.json` 與 `sw.js`。串接 Web Share Target API，使外部分享（如 YouTube、Threads 等）自動導向並將內容填入首頁輸入框，且加入離線 `localStorage` 暫存登入後自動加載功能。
-  * `manifest.json`
-  * `sw.js`
-  * `index.html`
-* **[自訂與更換 App 縮圖]**：生成高質感 3D 擬態 PWA 大腦圖示（`brain-icon.jpg`）並在 Manifest 中完成路徑配置，使用者可直接覆蓋此檔案自訂 icon。
-  * `brain-icon.jpg`
-  * `manifest.json`
-  * `index.html`
-* **[AI 網頁聯網研讀與潤飾]**：整合 Gemini API 聯網搜尋（Google Search Grounding）功能。當輸入框檢測到 URL 時，自動利用 AI 連網讀取網頁並歸納潤飾為繁體中文筆記，並在最後保留原網頁連結。同時完善了 candidates 檢查與 FinishReason 的錯誤拋出診斷。
-  * `index.html`
-* **[新增分類圖示 picker]**：在編輯分類圖示選擇器中一口氣擴增 20 多個實用 icon（服飾、記帳、娛樂、健康、數位、社交、天氣等）。
-  * `index.html`
-* **[快捷鍵攔截優化]**：修正編輯視窗與卡片移動 Undo/Redo 快捷鍵衝突。在 Editorjs 或 Edit Modal 等編輯彈窗開啟時，全域快捷鍵暫停以防干擾 native 文字操作。同時為 EditorJS 實作自訂的 `Ctrl + A` / `Cmd + A` 整篇內容跨 block 全選機制，並攔截了非編輯區下的 global 全選以避免 modal 背景文字反白。
-  * `index.html`
-* **[分類 "+" 按鈕快捷新增彈窗]**：將各分類區的 `+` 按鈕由原先的「移至頂端 + 變更 dropdown」改為「直接彈出專屬新增小視窗 (`#add-card-modal`)」，無縫繼承 `Enter` 快捷送出、AI 網頁研讀與 Undo 歷史管理器，不影響原本頁面焦點。
-  * `index.html`
+* **建立獨立 Firebase 環境**
+  * 沿用既有 project ID `dating-with-viola`，將顯示名稱改為 `Stay With Me`。
+  * project number 為 `1060778384338`，Firestore 位於 `asia-east1`。
+  * Firebase Web App ID 為 `1:1060778384338:web:a89a535bbaadb12b5cc60b`。
+  * 前端資料命名空間已由 `my-personal-ai-brain` 改為 `stay-with-me`，不再讀取 My AI Brain 的字卡。
+* **完成安全規則與雙人成員機制**
+  * 已部署版本化的 `firestore.rules`，採 membership 授權與其他路徑預設拒絕。
+  * 已加入個人空間、指定 email 的七日邀請碼、接受邀請、切換空間、列出成員與 owner 移除成員。
+  * 邀請資料不允許客戶端直接讀寫；成員異動由 Callable Functions 驗證 Auth、email 與 membership。
+* **完成新專案後端部署**
+  * 九個 Gen 2 Functions 均已部署至 `asia-east1`：`ensurePersonalSpace`、`createSpaceInvite`、`acceptSpaceInvite`、`removeSpaceMember`、`updateResearchAutomation`、`enqueueCardResearch`、`resolveResearchReview`、`discoverDueResearchJobs`、`runResearchJob`。
+  * Cloud Tasks queue `asia-east1/runResearchJob` 為 `RUNNING`，並已設定低吞吐、有限重試及所需 IAM。
+  * Secret Manager 已建立 `GEMINI_API_KEY`、`JINA_API_KEY`、`OPENROUTER_API_KEY`；值未寫入 repository。
+  * Artifact Registry image cleanup 設為保留 7 天。
+* **完成前端遷移與發布**
+  * GitHub Pages 已發布於 `https://allenphant.github.io/stay-with-me/`。
+  * 線上 `app.js` 已確認使用 `projectId: "dating-with-viola"` 與 `appId` namespace `stay-with-me`。
+  * PR [#2](https://github.com/allenphant/stay-with-me/pull/2) 已合併至 `main`，合併 commit 為 `a4798fd`。
+* **完成驗證**
+  * Firestore Rules 已成功編譯並發布。
+  * 完整測試曾達 98 tests 全數通過，並通過 JavaScript／shell 語法檢查與 `git diff --check`。
 
 ## 進行中與卡點 (In Progress & Blockers)
 
-* **目前進度**：本階段所有功能與問題修復皆已完美實作並推送至 `main` 分支。
-* **下一步**：等待使用者確認外部分享與快捷選取的體驗，並依需求進行下一個階段的優化。
+* **目前進度**：登入問題已解決，驗收清單前半段完成。剩下建卡持久化與雙帳號流程兩項人工測試。
+* **已完成｜Browser key referrer 修正（2026-08-04 01:02 UTC）**：key `9306a3ce-9b06-47e8-8371-6a12cb6a73ac` 的 `allowedReferrers` 由 `https://allenphant.github.io/stay-with-me/*` 改為 `https://allenphant.github.io/*`，另外兩筆 `firebaseapp.com`／`web.app` 維持不變。
+  * 已用 `describe --format=json` 逐字元驗證三筆值皆無隱藏 newline／空白污染。
+  * 已確認 `apiTargets` 仍為原本 9 個 service，未被 update 清空。
+* **已完成｜線上登入**：使用者於 2026-08-04 回報 Google 登入成功，`auth/requests-from-referer-...-are-blocked` 消失。
+* **已完成｜資料隔離驗證（CLI 客觀證據）**：以 Firestore REST `showMissing=true` 列出兩專案的 namespace，各自只有一個且互不重疊。
+  * `dating-with-viola` → 僅 `artifacts/stay-with-me`
+  * `my-ai-brain-6867e` → 僅 `artifacts/my-personal-ai-brain`
+  * 註：`artifacts/{appId}` 是無欄位的隱含父文件，一般 list 會回空值，**必須加 `showMissing=true`** 才看得到。
+* **已完成｜membership 機制實地生效**：`ensurePersonalSpace` 於 01:04:19Z 自動建立 `spaces/sk3Hgr0kLETBA8oMSwkxITWlwrp1`（`ownerUid` 同 uid、`memberCount: 1`、子集合 `memberships`）。
+* **已完成｜測試套件**：`npm test` 98 tests 全數通過，與既有基準一致。
+* **待辦｜人工測試 A**：在新站建立 `獨立資料庫測試` 卡片 → 重新整理確認仍在。（目前該 space 尚無任何卡片子集合，是乾淨基準）
+* **待辦｜人工測試 B**：雙帳號邀請／加入／共同編輯／移除成員。
+* **已完成｜人工測試 A（建卡持久化）**：卡片落於 `artifacts/stay-with-me/users/sk3Hgr.../inbox/T7WR2nAYvARMEupfAZ9y`（`text: "測試"`，01:13:31Z），舊專案無此資料。
+* **已完成｜品牌字樣清洗（改為 Stay With Me）**：`index.html` 標題／H1／Guide 標籤／頁尾標語、`manifest.json` name 與 short_name、`sw.js` CACHE_NAME（`ai-brain-v11` → `stay-with-me-v12`，順帶強制清舊快取）、`package.json`、`functions/package.json`、`functions/src/providers.js` 的 OpenRouter APP_URL／APP_NAME。
+  * 一併修正說明頁兩個**指向舊站與舊 repo 的錯誤連結**（原本連到 `my-ai-brain`），現指向 `stay-with-me`。
+  * 同步更新 `tests/help-center.test.mjs` 與 `tests/card-web-research.browser.mjs` 的對應斷言。
+  * **刻意保留**：`tests/shared-space.test.mjs:44,58` 的 `my-ai-brain-6867e` 字樣是隔離守門斷言（`assert.doesNotMatch`），改掉會讓防護失效；`README.md:7` 的 My Personal AI Brain 是專案沿革陳述，非品牌殘留。
+  * 驗證：`npm test` 98/98 通過、JSON／JS 語法檢查通過、`git diff --check` 乾淨。
+* **待辦｜人工測試 B**：雙帳號邀請／加入／共同編輯／移除成員。UI 入口在**設定 Modal** 的「共同空間」區塊，開啟方式為頁首粉紅愛心鈕（登入後才顯示）或側邊欄齒輪。
+  * **2026-08-04 發現：邀請流程尚未真正跑過。** Viola 只是登入，`ensurePersonalSpace` 便自動建了她**自己的**個人空間（`n2yU5QGHrgehMR0oCYXb3d0hyWL2`，`memberCount: 1`），兩人各自獨立。**登入 ≠ 加入**，必須另外走邀請碼流程。
+* **已完成｜雙人綁定的 UI 修正**：後端本來就有雙人上限（`functions/src/index.js` 的 `createSpaceInvite` 與 `acceptSpaceInvite` 皆檢查 `memberCount >= 2`），但前端不反映狀態，導致「看起來還能邀請第三人」。
+  * 新增 `space-pair-status`：未綁定時提示要建立／貼上邀請碼，已綁定時顯示「已與 X 綁定，這個空間已滿（上限兩人）」。
+  * `memberCount >= 2` 時隱藏邀請表單。
+  * 成員 listener 原本只呼叫 `renderSpaceMembers()`，改為 `renderSpaceControls()`，否則綁定狀態與邀請表單不會隨成員載入更新。
+* **已完成｜空間改名功能**：`spaces` 文件在 `firestore.rules` 是 `allow write: if false`，客戶端不能直寫，因此新增 Callable **`renameSpace`**（owner-only）。
+  * 空間名稱有**反正規化**：同時存在 `spaces/{id}.name` 與每位成員的 `users/{uid}/memberships/{spaceId}.name`，改名需以 batch 一起更新，否則另一方看到舊名稱。
+  * 前端新增 `space-rename-row`（僅 owner 可見）；輸入框在使用者正在編輯時不會被 re-render 覆蓋。
+* **待辦｜部署改名結果**：前端推 `main` 由 GitHub Pages 自動建置；`functions/src/providers.js` 的改動需 `firebase deploy --only functions:research-backend` 才會生效。
+* **待辦｜清理舊專案**：從 `my-ai-brain-6867e`（region `asia-east1`）移除誤部署的 `ensurePersonalSpace`、`createSpaceInvite`、`acceptSpaceInvite`、`removeSpaceMember`；**不要動**該專案既有的 5 個 research Functions。
+  * 已驗證安全：舊站線上 `app.js` 對這 4 個 Function 的引用次數為 0，刪除不影響 My AI Brain。
+  * 註：刪除指令被 Claude Code 權限機制擋下，需由使用者自行執行。
 * **卡點 (Blocker)**：無。
 
 ## 避坑指南 (Failed Approaches)
 
-* **瀏覽器跨網域限制 (CORS)**：原先想在前端直接透過 fetch 抓取使用者分享的網頁連結進行爬蟲，但受限於瀏覽器的 CORS 機制會直接報錯失敗。
-  * **教訓**：改為利用 Gemini 的 `google_search` 聯網工具（Google Search Grounding）在後端代為抓取與研讀，前端只做對接，成功繞過 CORS。
-* **Gemini REST API 參數大小寫**：在 v1beta API 中，Tools 啟用搜尋的欄位是 `google_search`（蛇形命名），誤用駝峰命名 `googleSearch` 會被 API 直接視為無效或丟出 HTTP 400 錯誤。
-  * **教訓**：必須嚴格遵守 API 文件格式。同時，使用 `response.ok` 詳實捕獲 `err.message` 呈現在 Toast 中，而非吞掉錯誤。
-* **跨 contenteditable 全選限制**：Editor.js 的每個 block 都是獨立的 contenteditable `div`，原生瀏覽器的全選（Ctrl+A）只會選取單個 paragraph。
-  * **教訓**：透過 `range.selectNodeContents(editorContainer)` 強行全選整個編輯器容器的 DOM range，並在非編輯焦點時 `preventDefault` 防止選到 modal 背後的整頁背景。
+* **沿用模板 Firebase config**：clone 後曾連到 `my-ai-brain-6867e`，因此新網站看見舊字卡。
+  * **教訓**：不同產品必須使用獨立 Firebase project 與獨立資料 namespace；本次已改為 `dating-with-viola`／`stay-with-me`。
+* **刪除舊 project 再建立同名 project**：建立新 project 時遇到 project quota，且刪除後 ID 通常不適合立刻重用。
+  * **教訓**：保留不可變的 `dating-with-viola` project ID，只修改顯示名稱為 `Stay With Me`。
+* **在 Cloud Shell 貼上過長的 referrer 指令**：終端自動換行曾把隱藏 newline 寫進 `http://localhost/*`。
+  * **教訓**：本次先用短指令只設定三個正式網域，更新後一定以 `describe --format='yaml(...)'` 檢查實際值。
+* **只允許 GitHub Pages repository path**：設定 `https://allenphant.github.io/stay-with-me/*` 後，Firebase Auth 仍以 origin `https://allenphant.github.io` 檢查 API key，造成目前登入錯誤。
+  * **教訓**：Browser key 的 GitHub Pages referrer 應允許 `https://allenphant.github.io/*`；Firebase Authorized Domains 仍維持 `allenphant.github.io`。
+* **使用錯誤的 Functions deploy filter**：`functions:ensurePersonalSpace` 找不到 codebase，泛用 `--only functions` 首次又只部署 task function。
+  * **教訓**：此 repository 的 codebase 是 `research-backend`，部署使用 `--only functions:research-backend`。
 
 ## 關鍵決策 (Key Decisions)
 
-* **[分享攔截寫入輸入框]**：原本分享會直接寫入 Firebase 建立卡片。決策改為「僅帶入輸入框並 focus」，原因是用戶分享外站內容時通常需要加上個人短評，自動新增會導致雜亂，帶入輸入框能給用戶二度編輯的緩衝。
-* **[PWA 離線策略-網路優先]**：Service Worker 採用 Network-First 策略。因為此 app 強度依賴 Firebase 與網路連線，Network-First 可確保使用者在有網路時，GitHub Pages 上任何代碼修改都能即時更新（無快取鎖死問題），只在離線時 fallback 快取。
+* **[獨立專案]**：Stay With Me 使用 `dating-with-viola`，My AI Brain 保留 `my-ai-brain-6867e`；兩者不得再共用資料庫。
+* **[不可變 ID 與顯示名稱分離]**：project ID、Firebase auth domain 與 storage bucket 仍保留 `dating-with-viola`，產品顯示名稱使用 `Stay With Me`。
+* **[安全資料邊界]**：Firestore 以 space membership 控制讀寫、server-only invite 與 default deny 取代「任何登入者皆可讀寫」。
+* **[雙人上限]**：每個共享空間最多兩名成員，邀請綁定 email 並設七天期限。
+* **[成本護欄]**：Blaze 已啟用並設 US$5 預算通知；Functions、Tasks 與 image cleanup 採低成本設定。
+* **[API key 定位]**：Firebase Web API key 可出現在客戶端，但必須靠 API allowlist、HTTP referrer、Auth、Firestore Rules 與 App Check 分層保護；Gemini/Jina/OpenRouter secrets 僅存 Secret Manager。
 
 ## 交接備忘錄 (Handover Context)
 
-這是一個 Vanilla JS + Firebase + Tailwind CDN 打造的單網頁 app。本階段完成了 PWA 的封裝與 Search Grounding 連網研讀。
-接手後第一步請先閱讀 `/home/cdc/CCdevelopment/my-ai-brain/CURRENT_STATE.md`。如有需要測試 PWA 功能，請將 GitHub Pages 加入手機主畫面並點選分享測試。
+下一輪先在 Cloud Shell 執行以下短指令，修正 Browser key 的正式站 referrer；這個動作只改應用程式限制，不應移除既有 API targets，但仍需用第二條指令確認兩者都存在：
+
+```bash
+BROWSER_KEY_ID="9306a3ce-9b06-47e8-8371-6a12cb6a73ac"
+
+gcloud services api-keys update "$BROWSER_KEY_ID" \
+  --project=dating-with-viola \
+  --location=global \
+  --allowed-referrers='https://allenphant.github.io/*,https://dating-with-viola.firebaseapp.com/*,https://dating-with-viola.web.app/*'
+
+gcloud services api-keys describe "$BROWSER_KEY_ID" \
+  --project=dating-with-viola \
+  --location=global \
+  --format='yaml(displayName,restrictions)'
+```
+
+確認 `allowedReferrers` 沒有隱藏換行、`apiTargets` 仍包含 Firebase／Firestore／Identity Toolkit／Secure Token 等既有 allowlist。等待設定傳播後，在 `https://allenphant.github.io/stay-with-me/` 按 `Ctrl+Shift+R` 強制重新整理並重新登入。
+
+登入成功後依序驗證：新站沒有 My AI Brain 舊字卡、建立 `獨立資料庫測試` 卡片後重新整理仍存在、舊 My AI Brain 網站看不到該卡，再進行雙帳號邀請／加入／共同編輯／移除成員測試。全部通過後，才從舊專案 `my-ai-brain-6867e` 移除先前誤部署的四個共享 Functions：`ensurePersonalSpace`、`createSpaceInvite`、`acceptSpaceInvite`、`removeSpaceMember`；不要刪除既有五個 research Functions。
+
+接手後第一步請先閱讀 `/home/cdc/CCdevelopment/stay-with-me/source/CURRENT_STATE.md`。
