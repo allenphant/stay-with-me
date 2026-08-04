@@ -64,8 +64,10 @@
 * **已完成｜清理舊專案**：已從 `my-ai-brain-6867e`（`asia-east1`）刪除誤部署的 `ensurePersonalSpace`、`createSpaceInvite`、`acceptSpaceInvite`、`removeSpaceMember`。刪除前已驗證舊站線上 `app.js` 對這 4 個的引用次數為 0。刪除後該專案剩下正好 5 個 research Functions，`dating-with-viola` 未受影響。
 * **已完成｜前端部署**：PR [#3](https://github.com/allenphant/stay-with-me/pull/3) 已 squash 合併至 `main`（`493e898`）。
   * **踩雷紀錄**：PR #2 是 squash 合併，`main` 上的 `a4798fd` 已含分支前三個 commit 的內容，直接合併 PR #3 會衝突（`the merge commit cannot be cleanly created`）。解法是從 `origin/main` 開新分支 cherry-pick 新 commit、驗證 `git diff` 與原 commit 為空後 force-with-lease 更新 PR 分支。
-* **待辦｜後端部署**：`renameSpace`（新增）與 `providers.js` 的品牌字串尚未上線，需執行 `firebase deploy --only functions:research-backend --project dating-with-viola`。
-  * firebase-tools 15.25.1 已安裝於本機，但 **Firebase CLI 有獨立登入，不吃 gcloud 憑證**，需先 `firebase login`。
+* **已完成｜後端部署**：`renameSpace` 建立成功，其餘 9 個更新成功，`dating-with-viola` 現有 10 個 Functions 全為 `ACTIVE`。
+  * firebase-tools 15.25.1 已安裝於本機。**Firebase CLI 有獨立登入，不吃 gcloud 憑證**，需先 `firebase login`。
+  * **踩雷紀錄**：`--non-interactive` 部署會因 `GEMINI_RESEARCH_MODEL`／`OPENROUTER_RESEARCH_MODEL` 中斷，即使兩者在 `index.js` 已有 `default`。**export 環境變數無效，CLI 只認 dotenv 檔**，必須建立 `functions/.env`（已被 `.gitignore` 第 7 行排除）。目前值與線上原值相同，部署未改變行為。
+* **已完成｜線上驗證**：`https://allenphant.github.io/stay-with-me/` 的 `<title>` 已是 `Stay With Me`，`space-rename-btn`／`space-pair-status` 已存在，`app.js` 含 `renameSpaceCallable`。
 * **卡點 (Blocker)**：無。
 
 ## 避坑指南 (Failed Approaches)
