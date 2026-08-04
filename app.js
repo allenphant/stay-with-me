@@ -98,6 +98,7 @@
         const createSpaceInviteCallable = httpsCallable(cloudFunctions, 'createSpaceInvite');
         const acceptSpaceInviteCallable = httpsCallable(cloudFunctions, 'acceptSpaceInvite');
         const removeSpaceMemberCallable = httpsCallable(cloudFunctions, 'removeSpaceMember');
+        const renameSpaceCallable = httpsCallable(cloudFunctions, 'renameSpace');
 
         let currentUser = null;
         let currentSpaceId = null;
@@ -2386,8 +2387,36 @@
             activeName.textContent = activeSpace?.name || '我的空間';
             statusButton.classList.toggle('hidden', !currentUser);
             statusButton.classList.toggle('flex', Boolean(currentUser));
-            ownerControls.classList.toggle('hidden', activeSpace?.role !== 'owner');
+            const isOwner = activeSpace?.role === 'owner';
+            // A space is capped at two members, so the invite form only makes
+            // sense while the owner is still unpaired.
+            const isPaired = currentSpaceMembers.length >= 2;
+            ownerControls.classList.toggle('hidden', !isOwner || isPaired);
+            const renameRow = document.getElementById('space-rename-row');
+            renameRow.classList.toggle('hidden', !isOwner);
+            const renameInput = document.getElementById('space-rename-input');
+            if (document.activeElement !== renameInput) {
+                renameInput.value = activeSpace?.name || '';
+            }
+            renderSpacePairStatus(isPaired);
             renderSpaceMembers();
+        }
+
+        function renderSpacePairStatus(isPaired) {
+            const status = document.getElementById('space-pair-status');
+            if (!currentUser) {
+                status.textContent = '登入後顯示綁定狀態。';
+                return;
+            }
+            if (isPaired) {
+                const partner = currentSpaceMembers.find(member => member.uid !== currentUser.uid);
+                const partnerName = partner?.displayName || partner?.email || '伴侶';
+                status.textContent = `已與 ${partnerName} 綁定，這個空間已滿（上限兩人）。`;
+                return;
+            }
+            status.textContent = getActiveSpace()?.role === 'owner'
+                ? '尚未綁定伴侶。建立邀請碼並請對方在自己的設定裡貼上加入。'
+                : '尚未綁定伴侶。';
         }
 
         function renderSpaceMembers() {
@@ -2433,12 +2462,14 @@
                 snapshot => {
                     currentSpaceMembers = snapshot.docs.map(item => ({uid: item.id, ...item.data()}));
                     currentSpaceMembers.sort((a, b) => (a.role === 'owner' ? -1 : 1) - (b.role === 'owner' ? -1 : 1));
-                    renderSpaceMembers();
+                    // Pair status and the invite form both depend on member
+                    // count, so refresh the whole panel rather than the list.
+                    renderSpaceControls();
                 },
                 error => {
                     console.error('無法載入空間成員：', error);
                     currentSpaceMembers = [];
-                    renderSpaceMembers();
+                    renderSpaceControls();
                 }
             );
         }
@@ -4252,6 +4283,30 @@
             keyLayers.push({ name: 'settings', keys: modalKeys(closeSettingsModal) });
         }
 
+        async function renameSpace() {
+            const input = document.getElementById('space-rename-input');
+            const button = document.getElementById('space-rename-btn');
+            const status = document.getElementById('space-action-status');
+            const name = input.value.trim();
+            if (!name) {
+                status.textContent = '請輸入空間名稱。';
+                input.focus();
+                return;
+            }
+            button.disabled = true;
+            button.textContent = '儲存中…';
+            try {
+                await renameSpaceCallable({spaceId: getActiveSpaceId(), name});
+                status.textContent = '空間名稱已更新。';
+            } catch (error) {
+                console.error('空間改名失敗：', error);
+                status.textContent = error?.message || '空間改名失敗。';
+            } finally {
+                button.disabled = false;
+                button.textContent = '改名';
+            }
+        }
+
         async function createSpaceInvite() {
             const emailInput = document.getElementById('space-invite-email');
             const button = document.getElementById('create-space-invite-btn');
@@ -4341,6 +4396,7 @@
             localStorage.setItem(getSpaceStorageKey(), event.target.value);
             window.location.reload();
         });
+        document.getElementById('space-rename-btn').addEventListener('click', renameSpace);
         document.getElementById('create-space-invite-btn').addEventListener('click', createSpaceInvite);
         document.getElementById('accept-space-invite-btn').addEventListener('click', acceptSpaceInvite);
         document.getElementById('add-tag-btn').addEventListener('click', addDraftTag);

@@ -549,7 +549,7 @@ try {
             copied: 'https://youtu.be/DTKR9d0GpYs'
         }
     );
-    await page.screenshot({ path: '/tmp/my-ai-brain-card-research.png', fullPage: false });
+    await page.screenshot({ path: '/tmp/stay-with-me-card-research.png', fullPage: false });
 
     await page.click('#help-center-btn');
     await page.waitForFunction(() => !document.querySelector('#help-center-modal').classList.contains('hidden'));
@@ -557,7 +557,7 @@ try {
     assert.match(await page.$eval('#help-center-content', element => element.textContent), /收集 → 研讀 → 整理 → 找回/);
     assert.equal(
         await page.$eval('#help-deployment a', link => link.href),
-        'https://allenphant.github.io/my-ai-brain/'
+        'https://allenphant.github.io/stay-with-me/'
     );
     await page.click('[data-help-target="help-deployment"]');
     assert.equal(
@@ -590,7 +590,7 @@ try {
         await page.$$eval('[data-search-group]', groups => groups.map(group => group.getAttribute('data-search-group'))),
         ['inbox', 'todos', 'bookmarks']
     );
-    await page.screenshot({ path: '/tmp/my-ai-brain-global-search.png', fullPage: false });
+    await page.screenshot({ path: '/tmp/stay-with-me-global-search.png', fullPage: false });
     await page.click('[data-search-group="inbox"] [data-search-card] [data-tag-card-open]');
     await page.waitForFunction(() => document.body.classList.contains('editor-open'));
     await page.evaluate(() => history.back());
@@ -642,7 +642,7 @@ try {
         await page.$$eval('[data-tag-browser-group]', groups => groups.map(group => group.getAttribute('data-tag-browser-group'))),
         ['inbox', 'todos', 'bookmarks']
     );
-    await page.screenshot({ path: '/tmp/my-ai-brain-tag-browser.png', fullPage: false });
+    await page.screenshot({ path: '/tmp/stay-with-me-tag-browser.png', fullPage: false });
     await page.click('[data-tag-browser-group="inbox"] [data-tag-browser-card][data-id="card-1"] [data-tag-card-open]');
     await page.waitForFunction(() => document.body.classList.contains('editor-open'));
     await page.evaluate(() => history.back());
@@ -688,7 +688,7 @@ try {
     await page.click('#add-tag-btn');
     assert.equal(await page.$$eval('#tag-manager-list input', inputs => inputs.some(input => input.value === '研究')), true);
     await page.$eval('#web-research-system-prompt', input => { input.value = '自訂研讀提示：只根據來源輸出繁體中文。'; });
-    await page.screenshot({ path: '/tmp/my-ai-brain-jina-settings.png', fullPage: false });
+    await page.screenshot({ path: '/tmp/stay-with-me-jina-settings.png', fullPage: false });
     await page.$eval('#mistral-api-key-input', input => {
         input.value = 'fake-mistral-key';
         input.dispatchEvent(new Event('input', { bubbles: true }));
@@ -893,7 +893,7 @@ try {
         await page.$$eval('#web-research-preview-tags input', inputs => inputs.map(input => ({ value: input.value, checked: input.checked }))),
         [{ value: 'design', checked: true }, { value: 'new:設計工具', checked: true }]
     );
-    await page.screenshot({ path: '/tmp/my-ai-brain-jina-preview.png', fullPage: false });
+    await page.screenshot({ path: '/tmp/stay-with-me-jina-preview.png', fullPage: false });
     assert.equal(webResearchPosts, 1);
     assert.equal(jinaGets, 2);
     assert.match(researchPostBodies[0], /自訂研讀提示/);

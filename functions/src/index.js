@@ -443,6 +443,35 @@ exports.removeSpaceMember = onCall({
   return {ok: true};
 });
 
+exports.renameSpace = onCall({
+  region: REGION,
+  memory: "256MiB",
+  minInstances: 0,
+  maxInstances: 1,
+}, async (request) => {
+  const uid = requireAuth(request);
+  const spaceId = assertDocumentPart(request.data?.spaceId, "spaceId");
+  if (!String(request.data?.name || "").trim()) {
+    throw new HttpsError("invalid-argument", "請輸入空間名稱。");
+  }
+  const requester = await requireSpaceMember(spaceId, uid);
+  if (requester.role !== "owner") {
+    throw new HttpsError("permission-denied", "只有空間擁有者可以重新命名空間。");
+  }
+  const name = normalizeSpaceName(request.data.name);
+  // The space name is denormalized into every member's membership doc, so both
+  // members see the new name without re-reading the space document.
+  const memberDocs = await spaceRef(spaceId).collection("members").get();
+  const now = FieldValue.serverTimestamp();
+  const batch = db.batch();
+  batch.set(spaceRef(spaceId), {name, updatedAt: now}, {merge: true});
+  memberDocs.forEach((memberDoc) => {
+    batch.set(membershipRef(memberDoc.id, spaceId), {name, updatedAt: now}, {merge: true});
+  });
+  await batch.commit();
+  return {ok: true, spaceId, name};
+});
+
 exports.updateResearchAutomation = onCall({
   region: REGION,
   memory: "256MiB",
