@@ -6,6 +6,7 @@ const DEFAULT_SYSTEM_PROMPT = [
   "回傳 JSON，不要 Markdown。",
   "只能使用 tldr、verdict、notes、suggestedTags、limitations 這五個固定鍵名。",
   "tldr、verdict、notes、limitations 都不可為空；若沒有已知限制，limitations 請填『無』。",
+  "文字只能使用繁體中文、英文技術名詞、數字與標點，不可夾雜韓文、日文假名或其他文字系統。",
   "suggestedTags 最多 5 個簡短繁體中文詞彙。",
   "若來源有影片但無法解析，必須在 limitations 明確說明。",
 ].join("\n");
@@ -227,10 +228,24 @@ function normalizeResearchResult(value, sourceUrl) {
   };
 }
 
+function isSupportedResearchText(value, {requireHan = false} = {}) {
+  const text = String(value || "").trim();
+  if (!text) return false;
+  if (requireHan && !/\p{Script=Han}/u.test(text)) return false;
+  const letters = text.match(/\p{Letter}/gu) || [];
+  return letters.every((letter) =>
+    /[\p{Script=Han}\p{Script=Latin}]/u.test(letter),
+  );
+}
+
 function isCompleteResearchResult(result) {
-  return [result?.tldr, result?.verdict, result?.notes, result?.limitations]
-    .every((value) => String(value || "").trim()) &&
-    Array.isArray(result?.suggestedTags) && result.suggestedTags.length > 0;
+  const narratives = [result?.tldr, result?.verdict, result?.notes, result?.limitations];
+  return narratives.every((value) =>
+    isSupportedResearchText(value, {requireHan: true}),
+  ) &&
+    Array.isArray(result?.suggestedTags) &&
+    result.suggestedTags.length > 0 &&
+    result.suggestedTags.every((tag) => isSupportedResearchText(tag));
 }
 
 function parseResearchResult(text, sourceUrl, provider) {
@@ -588,6 +603,7 @@ module.exports = {
   extractOpenRouterText,
   isFreeTextModel,
   isCompleteResearchResult,
+  isSupportedResearchText,
   listOpenRouterFreeModels,
   normalizeResearchResult,
   parseResearchResult,

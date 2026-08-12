@@ -10,6 +10,7 @@ const {
   extractInteractionText,
   extractOpenRouterText,
   isFreeTextModel,
+  isSupportedResearchText,
   normalizeResearchResult,
   parseResearchResult,
   selectOpenRouterFreeModels,
@@ -65,6 +66,21 @@ test("rejects parseable but incomplete research JSON", () => {
       assert.equal(error.retryable, true);
       return true;
     },
+  );
+});
+
+test("rejects research text contaminated by unsupported writing systems", () => {
+  assert.equal(isSupportedResearchText("繁體中文與 API 2.0"), true);
+  assert.equal(isSupportedResearchText("文件ాలకు"), false);
+  assert.throws(
+    () => parseResearchResult(JSON.stringify({
+      tldr: "這是專고요摘要",
+      verdict: "值得閱讀",
+      notes: "詳細重點",
+      suggestedTags: ["文件"],
+      limitations: "無",
+    }), "https://example.com", "openrouter"),
+    (error) => error.reason === "invalid_result" && error.retryable === true,
   );
 });
 
