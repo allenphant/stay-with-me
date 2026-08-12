@@ -779,11 +779,11 @@
                         <label class="mt-3 flex min-h-12 cursor-pointer items-center justify-between gap-4 rounded-xl border border-violet-200 bg-white px-3 py-2">
                             <span class="min-w-0">
                                 <span class="block text-sm font-bold text-violet-950">雲端背景研讀</span>
-                                <span class="mt-0.5 block text-xs leading-5 text-violet-700">關閉網頁與電腦後仍會排隊；完成結果跨裝置進入待審核。</span>
+                                <span class="mt-0.5 block text-xs leading-5 text-violet-700">關閉網頁與電腦後仍會排隊；可選擇完成後審核或安全地直接寫入。</span>
                             </span>
                             <input id="cloud-research-enabled-toggle" type="checkbox" class="h-5 w-5 shrink-0 accent-violet-600">
                         </label>
-                        <p class="mt-2 text-xs leading-5 text-violet-800">啟用雲端後，卡片的「AI 研讀」會改成「雲端研讀」。目前雲端結果固定手動審核，不會直接寫入卡片。</p>
+                        <p class="mt-2 text-xs leading-5 text-violet-800">啟用雲端後，卡片的「AI 研讀」會改成「雲端研讀」。自動寫入只適用一般網址；YouTube 仍保留 NotebookLM 人工流程。</p>
                         <div class="mt-2 rounded-xl border border-violet-200 bg-white/80 px-3 py-2 text-xs leading-5 text-violet-900">
                             <div><i class="fas fa-route mr-1.5 text-violet-600"></i>一般網址：Jina Reader 擷取原文 → OpenRouter 免費模型整理。</div>
                             <div class="mt-1"><i class="fas fa-video mr-1.5 text-amber-600"></i>YouTube：不送文字模型猜測；請使用卡片上的 NotebookLM 按鈕手動研讀。</div>
@@ -796,6 +796,19 @@
                             <option value="3d">每 3 天</option>
                             <option value="weekly">每週</option>
                         </select>
+                        <fieldset class="mt-3">
+                            <legend class="text-xs font-bold text-violet-950">完成後如何處理</legend>
+                            <div class="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                                <label class="flex min-h-14 cursor-pointer items-start gap-3 rounded-xl border border-violet-200 bg-white px-3 py-2.5 has-[:checked]:border-violet-500 has-[:checked]:bg-violet-100/70 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-violet-300">
+                                    <input type="radio" name="cloud-research-approval-mode" value="manual" class="mt-1 h-4 w-4 shrink-0 accent-violet-600" checked>
+                                    <span><span class="block text-sm font-bold text-violet-950">手動審核</span><span class="mt-0.5 block text-xs leading-5 text-violet-700">先預覽摘要與 Tag，再決定是否加入卡片。</span></span>
+                                </label>
+                                <label class="flex min-h-14 cursor-pointer items-start gap-3 rounded-xl border border-violet-200 bg-white px-3 py-2.5 has-[:checked]:border-violet-500 has-[:checked]:bg-violet-100/70 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-violet-300">
+                                    <input type="radio" name="cloud-research-approval-mode" value="auto" class="mt-1 h-4 w-4 shrink-0 accent-violet-600">
+                                    <span><span class="block text-sm font-bold text-violet-950">自動寫入</span><span class="mt-0.5 block text-xs leading-5 text-violet-700">確認卡片未變更後，追加筆記、搜尋索引與建議 Tag。</span></span>
+                                </label>
+                            </div>
+                        </fieldset>
                         <div class="mt-3 flex flex-col gap-2 sm:flex-row">
                             <button id="run-auto-research-now-btn" type="button" class="min-h-10 rounded-xl bg-violet-600 px-4 text-sm font-bold text-white hover:bg-violet-700 focus:outline-none focus:ring-2 focus:ring-violet-300"><i class="fas fa-play mr-1.5"></i>現在檢查並排程</button>
                             <button id="reset-auto-research-failures-btn" type="button" class="min-h-10 rounded-xl border border-violet-200 bg-white px-4 text-sm font-bold text-violet-700 hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-violet-300">清除失敗紀錄</button>

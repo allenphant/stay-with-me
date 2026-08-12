@@ -7,10 +7,11 @@
 這個專案從 My Personal AI Brain 延伸而來，是一個極度輕量、零延遲、且跨裝置同步的雙人生活空間與點子收集處。
 透過結合 **Firebase 即時資料庫** 與 **Google Gemini API**，你可以隨時隨地將大腦中零碎的待辦事項、靈感或網址「傾倒」進收件匣，並透過「AI 魔法整理」一鍵自動將碎片歸類到專屬的區塊中。
 
-## ☁️ 無人值守研讀後端（建置中）
+## ☁️ 無人值守研讀後端
 
-目前已加入一套預設停用的 Firebase Functions／Cloud Tasks 後端骨架，讓網址
-研讀未來可在瀏覽器關閉後繼續執行。首次啟用前請依序閱讀：
+目前已加入一套預設停用的 Firebase Functions／Cloud Tasks 後端，讓網址研讀可在
+瀏覽器關閉後繼續執行。一般網址可選擇手動審核或以 transaction 安全自動寫入；
+YouTube 仍保留 NotebookLM 人工流程。首次啟用前請依序閱讀：
 
 1. [成本預算與防爆帳單清單](docs/CLOUD_COST_BUDGET.md)
 2. [Google Cloud／Firebase 設定指南](docs/CLOUD_SETUP_GUIDE.md)

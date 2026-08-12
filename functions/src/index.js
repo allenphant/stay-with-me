@@ -26,6 +26,10 @@ const {
 const {analyzeSource, ExternalServiceError} = require("./providers");
 const {describeTaskEnqueueError} = require("./enqueue-errors");
 const {
+  buildAutoApprovalWrites,
+  shouldAutoApproveJob,
+} = require("./auto-approval");
+const {
   canAcceptInvite,
   createInviteCode,
   getInviteExpiration,
@@ -187,6 +191,7 @@ async function reserveAndCreateJob({uid, requestedByUid, collectionName, cardId,
         sourceUrl,
         sourceKind,
         sourceFingerprint: fingerprint,
+        approvalMode: settings.approvalMode,
         status: "blocked_budget",
         budgetReason: budget.reason,
         estimatedCostCents,
@@ -215,6 +220,7 @@ async function reserveAndCreateJob({uid, requestedByUid, collectionName, cardId,
       sourceUrl,
       sourceKind,
       sourceFingerprint: fingerprint,
+      approvalMode: settings.approvalMode,
       status: "queued",
       attempts: 0,
       estimatedCostCents,
@@ -589,6 +595,65 @@ async function findCandidateCards(uid, maxJobs) {
   return candidates;
 }
 
+async function autoApproveResearchJob(jobRef) {
+  return db.runTransaction(async (transaction) => {
+    const jobSnapshot = await transaction.get(jobRef);
+    if (!jobSnapshot.exists) return {status: "missing"};
+    const job = jobSnapshot.data();
+    if (job.status === "succeeded") return {status: "succeeded", unchanged: true};
+    if (job.status !== "auto_approving" || !shouldAutoApproveJob(job)) {
+      return {status: job.status, unchanged: true};
+    }
+
+    const cardRef = db.doc(getCardPath(job.uid, job.collectionName, job.cardId));
+    const noteRef = cardRef.collection("details").doc("note");
+    const tagsRef = db.doc(`artifacts/${APP_ID}/users/${job.uid}/settings/tags`);
+    const [cardSnapshot, noteSnapshot, tagsSnapshot] = await Promise.all([
+      transaction.get(cardRef),
+      transaction.get(noteRef),
+      transaction.get(tagsRef),
+    ]);
+    if (!cardSnapshot.exists ||
+        sourceFingerprint(cardSnapshot.data()) !== job.sourceFingerprint) {
+      transaction.set(jobRef, {
+        status: "cancelled_stale",
+        error: {
+          code: cardSnapshot.exists ? "source_changed" : "card_not_found",
+          message: cardSnapshot.exists ?
+            "卡片內容已變更，自動寫入已取消。" :
+            "卡片已不存在。",
+        },
+        updatedAt: FieldValue.serverTimestamp(),
+      }, {merge: true});
+      return {status: "cancelled_stale"};
+    }
+
+    const writes = buildAutoApprovalWrites({
+      card: cardSnapshot.data(),
+      noteData: noteSnapshot.exists ? noteSnapshot.data().data : null,
+      tags: tagsSnapshot.exists ? tagsSnapshot.data().items : [],
+      result: job.result,
+    });
+    transaction.set(noteRef, {
+      data: writes.noteData,
+      updatedAt: writes.cardData.updatedAt,
+    }, {merge: true});
+    transaction.set(cardRef, writes.cardData, {merge: true});
+    transaction.set(tagsRef, {
+      items: writes.tags,
+      updatedAt: writes.tagsUpdatedAt,
+    }, {merge: true});
+    transaction.set(jobRef, {
+      status: "succeeded",
+      reviewDecision: "auto_approved",
+      autoApprovedAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+      error: FieldValue.delete(),
+    }, {merge: true});
+    return {status: "succeeded"};
+  });
+}
+
 exports.discoverDueResearchJobs = onSchedule({
   schedule: "every 10 minutes",
   timeZone: "Asia/Taipei",
@@ -671,6 +736,11 @@ exports.runResearchJob = onTaskDispatched({
   const job = jobSnapshot.data();
   if (TERMINAL_JOB_STATUSES.has(job.status)) return;
 
+  if (job.status === "auto_approving" && shouldAutoApproveJob(job) && job.result) {
+    await autoApproveResearchJob(jobRef);
+    return;
+  }
+
   const cardRef = db.doc(getCardPath(job.uid, job.collectionName, job.cardId));
   const cardSnapshot = await cardRef.get();
   if (!cardSnapshot.exists) {
@@ -698,6 +768,7 @@ exports.runResearchJob = onTaskDispatched({
     updatedAt: FieldValue.serverTimestamp(),
   }, {merge: true});
 
+  let autoApprovalPending = false;
   try {
     const result = await analyzeSource({
       sourceUrl: job.sourceUrl,
@@ -713,8 +784,10 @@ exports.runResearchJob = onTaskDispatched({
       model: resultModel,
       ...resultPayload
     } = result;
+    const autoApprove = shouldAutoApproveJob(job);
+    if (autoApprove) autoApprovalPending = true;
     await jobRef.set({
-      status: "pending_review",
+      status: autoApprove ? "auto_approving" : "pending_review",
       result: resultPayload,
       provider: resultProvider || (job.sourceKind === "youtube" ?
         "notebooklm-manual" :
@@ -724,7 +797,21 @@ exports.runResearchJob = onTaskDispatched({
       updatedAt: FieldValue.serverTimestamp(),
       error: FieldValue.delete(),
     }, {merge: true});
+    if (autoApprove) {
+      await autoApproveResearchJob(jobRef);
+      autoApprovalPending = false;
+    }
   } catch (error) {
+    if (autoApprovalPending) {
+      // The transaction is the idempotency boundary. Do not write the job back
+      // to auto_approving here: a lost commit acknowledgement could otherwise
+      // regress an already-succeeded job and append the result twice on retry.
+      logger.error("automatic research approval failed", {
+        jobPath,
+        message: String(error?.message || "auto approval failed").slice(0, 500),
+      });
+      throw error;
+    }
     const retryable = error instanceof ExternalServiceError && error.retryable;
     await jobRef.set({
       status: retryable ? "retry_wait" : "failed_terminal",

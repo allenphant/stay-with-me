@@ -952,6 +952,19 @@
             return Number.isFinite(parsed) ? parsed : 0;
         }
 
+        function getCloudResearchApprovalMode() {
+            const settingsOpen = !document.getElementById('settings-modal')?.classList.contains('hidden');
+            if (settingsOpen) {
+                return document.querySelector('input[name="cloud-research-approval-mode"]:checked')?.value === 'auto'
+                    ? 'auto'
+                    : 'manual';
+            }
+            if (cloudAutomationSettings) {
+                return cloudAutomationSettings.approvalMode === 'auto' ? 'auto' : 'manual';
+            }
+            return localStorage.getItem('cloudResearchApprovalMode') === 'auto' ? 'auto' : 'manual';
+        }
+
         function renderAutomaticResearchScheduleStatus() {
             const status = document.getElementById('auto-research-schedule-status');
             if (!status) return;
@@ -962,6 +975,7 @@
             const cloudEnabled = isCloudResearchEnabled();
             if (cloudEnabled) {
                 const pendingCount = cloudResearchReviewItems.length;
+                const approvalMode = getCloudResearchApprovalMode();
                 const lines = ['執行位置：Google Cloud（關閉網頁後仍會繼續）。'];
                 if (cloudResearchListenerError) {
                     lines.push(`雲端狀態讀取失敗：${cloudResearchListenerError}`);
@@ -973,7 +987,10 @@
                 } else {
                     lines.push('雲端排程設定同步中。');
                 }
-                lines.push(`雲端待審核 ${pendingCount} 筆；每分鐘最多處理 1 張。`);
+                lines.push(approvalMode === 'auto'
+                    ? `一般網址完成後自動寫入；既有待審核 ${pendingCount} 筆。`
+                    : `雲端待審核 ${pendingCount} 筆。`);
+                lines.push('每分鐘最多處理 1 張。');
                 status.textContent = lines.join(' ');
                 const resetButton = document.getElementById('reset-auto-research-failures-btn');
                 if (resetButton) {
@@ -1239,10 +1256,10 @@
             );
         }
 
-        async function syncCloudAutomationSettings(interval) {
+        async function syncCloudAutomationSettings(interval, approvalMode = getCloudResearchApprovalMode()) {
             const response = await updateResearchAutomationCallable(
                 {
-                    ...buildCloudAutomationPayload(interval, { approvalMode: 'manual' }),
+                    ...buildCloudAutomationPayload(interval, { approvalMode }),
                     spaceId: getActiveSpaceId()
                 }
             );
@@ -4273,6 +4290,13 @@
             document.getElementById('auto-sort-select').value = localStorage.getItem('autoSortSetting') || 'off';
             document.getElementById('auto-research-interval-select').value = localStorage.getItem('autoResearchInterval') || 'off';
             document.getElementById('cloud-research-enabled-toggle').checked = localStorage.getItem('cloudResearchEnabled') === 'on';
+            const savedCloudApprovalMode = cloudAutomationSettings
+                ? cloudAutomationSettings.approvalMode === 'auto' ? 'auto' : 'manual'
+                : localStorage.getItem('cloudResearchApprovalMode') === 'auto' ? 'auto' : 'manual';
+            const cloudApprovalInput = document.querySelector(
+                `input[name="cloud-research-approval-mode"][value="${savedCloudApprovalMode}"]`
+            );
+            if (cloudApprovalInput) cloudApprovalInput.checked = true;
             document.getElementById('auto-newline-toggle').checked = localStorage.getItem('autoNewlineAfterUrl') !== 'off';
             draftTags = currentTags.map(tag => ({ ...tag }));
             renderTagManager();
@@ -4420,6 +4444,9 @@
         });
         document.getElementById('auto-research-interval-select').addEventListener('change', renderAutomaticResearchScheduleStatus);
         document.getElementById('cloud-research-enabled-toggle').addEventListener('change', renderAutomaticResearchScheduleStatus);
+        document.querySelectorAll('input[name="cloud-research-approval-mode"]').forEach(input => {
+            input.addEventListener('change', renderAutomaticResearchScheduleStatus);
+        });
         document.getElementById('new-tag-input').addEventListener('keydown', event => {
             if (event.key !== 'Enter') return;
             event.preventDefault();
@@ -4642,6 +4669,7 @@
             const imgbbKey = document.getElementById('imgbb-key-input').value.trim();
             const cloudResearchEnabled = document.getElementById('cloud-research-enabled-toggle').checked;
             const autoResearchInterval = document.getElementById('auto-research-interval-select').value;
+            const cloudResearchApprovalMode = getCloudResearchApprovalMode();
             const wasCloudResearchEnabled = localStorage.getItem('cloudResearchEnabled') === 'on';
             const cleanedTags = draftTags
                 .map(tag => ({ id: String(tag.id), name: String(tag.name || '').trim().replace(/\s+/g, ' ').slice(0, 40) }))
@@ -4702,9 +4730,13 @@
                     throw new Error('請先登入，才能變更雲端研讀設定。');
                 }
                 if (cloudResearchEnabled || wasCloudResearchEnabled) {
-                    await syncCloudAutomationSettings(cloudResearchEnabled ? autoResearchInterval : 'off');
+                    await syncCloudAutomationSettings(
+                        cloudResearchEnabled ? autoResearchInterval : 'off',
+                        cloudResearchApprovalMode
+                    );
                 }
                 localStorage.setItem('cloudResearchEnabled', cloudResearchEnabled ? 'on' : 'off');
+                localStorage.setItem('cloudResearchApprovalMode', cloudResearchApprovalMode);
                 if (currentUser) {
                     await setDoc(
                         doc(db, 'artifacts', appId, 'users', getActiveSpaceId(), 'settings', 'tags'),

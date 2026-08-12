@@ -12,7 +12,7 @@
 - 現有登入：Firebase Authentication
 - 本機已有 Google Cloud CLI
 - 本機目前 gcloud 預設專案不是本專案，因此禁止省略 `--project`
-- Firebase CLI 尚未安裝
+- Firebase CLI 已安裝；部署前仍需確認登入帳號與 project ID
 
 ## 1. 確認你正在操作正確專案
 
@@ -238,7 +238,7 @@ Secret Manager：
 
 ## 11. 初始化個人自動研讀設定
 
-後端部署完成後，前端下一階段會呼叫 `updateResearchAutomation`。預設設定：
+前端會呼叫 `updateResearchAutomation` 同步排程與結果處理模式。預設設定：
 
 ```json
 {
@@ -256,14 +256,15 @@ Secret Manager：
 
 ## 12. 分階段驗收
 
-1. 手動建立 1 張一般網址工作。
-2. 確認 Firestore job 依序變成 `queued → running → pending_review`。
-3. 確認詳細筆記尚未被自動覆寫。
-4. 測試相同卡片不會重複建立工作。
-5. 測試修改卡片後舊工作會變成 `cancelled_stale`。
-6. 測試 5 張卡片，確認 Tasks 每次只執行一張。
-7. 測試 OpenRouter 429，確認進入有限 retry；401／402 必須直接終止。
-8. 最後才將 `enabled` 設為 `true`。
+1. 選擇「手動審核」，建立 1 張一般網址工作。
+2. 確認 Firestore job 依序變成 `queued → running → pending_review`，詳細筆記尚未改變。
+3. 從前端預覽並確認寫入，檢查 job 變成 `succeeded`。
+4. 選擇「自動寫入」，用另一張一般網址確認 `queued → running → auto_approving → succeeded`，且筆記只追加一次、搜尋索引與 Tag 同步更新。
+5. 測試相同卡片不會重複建立工作，重送 Task 也不會重複追加筆記。
+6. 在 Worker 完成前修改卡片，確認舊工作變成 `cancelled_stale`。
+7. 測試 5 張卡片，確認 Tasks 每次只執行一張。
+8. 測試 OpenRouter 429，確認進入有限 retry；401／402 必須直接終止。
+9. 最後才將自動排程 `enabled` 設為 `true`。
 
 ## 13. 回復方式
 

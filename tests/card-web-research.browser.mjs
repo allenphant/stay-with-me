@@ -670,6 +670,13 @@ try {
         await page.$$eval('[data-backfill-approval-mode="auto"]', buttons => buttons.length),
         2
     );
+    assert.deepEqual(
+        await page.$$eval('input[name="cloud-research-approval-mode"]', inputs => inputs.map(input => ({
+            value: input.value,
+            checked: input.checked
+        }))),
+        [{ value: 'manual', checked: true }, { value: 'auto', checked: false }]
+    );
     await page.evaluate(() => {
         const input = document.querySelector('#idea-input');
         input.value = 'https://example.com/mobile-paste手機說明';
@@ -1277,7 +1284,18 @@ try {
     await page.click('#close-research-log-btn');
     await page.waitForFunction(() => document.querySelector('#research-log-modal').classList.contains('hidden'));
 
-    await page.evaluate(() => localStorage.setItem('cloudResearchEnabled', 'on'));
+    await page.$eval('#settings-btn', button => button.click());
+    await page.$eval('#cloud-research-enabled-toggle', input => { input.checked = true; });
+    await page.click('input[name="cloud-research-approval-mode"][value="auto"]');
+    await page.screenshot({ path: '/tmp/stay-with-me-cloud-auto-approval.png', fullPage: false });
+    await page.click('#save-settings-btn');
+    await page.waitForFunction(() =>
+        (globalThis.__mockCallableCalls || []).some(call =>
+            call.name === 'updateResearchAutomation'
+            && call.payload.approvalMode === 'auto'
+        )
+    );
+    assert.equal(await page.evaluate(() => localStorage.getItem('cloudResearchApprovalMode')), 'auto');
     await page.reload({ waitUntil: 'domcontentloaded' });
     await page.waitForSelector('li[data-id="card-1"] .web-research-btn');
     assert.equal(

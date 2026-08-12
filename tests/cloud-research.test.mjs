@@ -19,6 +19,8 @@ test('cloud automation keeps safe server-side limits and disables unknown interv
     });
     assert.equal(buildCloudAutomationPayload('off').enabled, false);
     assert.equal(buildCloudAutomationPayload('unexpected').interval, 'daily');
+    assert.equal(buildCloudAutomationPayload('daily', { approvalMode: 'auto' }).approvalMode, 'auto');
+    assert.equal(buildCloudAutomationPayload('daily', { approvalMode: 'unsafe' }).approvalMode, 'manual');
 });
 
 test('cloud result becomes the existing review payload and reuses matching tags', () => {
