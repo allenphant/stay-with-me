@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
 import {
     buildCloudAutomationPayload,
     formatCloudResearchNote,
@@ -70,4 +71,17 @@ test('cloud review supersedes the same local card while keeping other local revi
     );
     assert.deepEqual(merged.map(item => item.id), ['cloud:job-1', 'ideas/card-2']);
     assert.match(formatCloudResearchNote({ tldr: '只有摘要' }), /只有摘要/);
+});
+
+test('failed cloud jobs expose a bounded retry path instead of staying permanently stuck', async () => {
+    const [appSource, functionsSource] = await Promise.all([
+        readFile(new URL('../app.js', import.meta.url), 'utf8'),
+        readFile(new URL('../functions/src/index.js', import.meta.url), 'utf8')
+    ]);
+    assert.match(functionsSource, /getManualRetryDecision\(existing\)/);
+    assert.match(functionsSource, /status: "retry_enqueueing"/);
+    assert.match(functionsSource, /manualRetryCount: retry\.nextManualRetryCount/);
+    assert.match(functionsSource, /shouldRetryTaskFailure\(\{[\s\S]+attempts: attemptNumber/);
+    assert.match(appSource, /result\.reason === 'manual_retry'/);
+    assert.match(appSource, /result\.reason === 'manual_retry_limit'/);
 });

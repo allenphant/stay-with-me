@@ -16,11 +16,13 @@ const {
   estimateJobCostCents,
   extractUrls,
   getCardPath,
+  getManualRetryDecision,
   getNextRunAt,
   getResearchJobPath,
   getUsagePeriodIds,
   isResearchCandidate,
   normalizeAutomationSettings,
+  shouldRetryTaskFailure,
   sourceFingerprint,
 } = require("./job-policy");
 const {analyzeSource, ExternalServiceError} = require("./providers");
@@ -164,13 +166,41 @@ async function reserveAndCreateJob({uid, requestedByUid, collectionName, cardId,
     ]);
     if (existingJob.exists) {
       const existing = existingJob.data();
+      const retry = getManualRetryDecision(existing);
+      if (retry.allowed) {
+        const now = FieldValue.serverTimestamp();
+        transaction.set(jobRef, {
+          status: "retry_enqueueing",
+          attempts: 0,
+          manualRetryCount: retry.nextManualRetryCount,
+          retryRequestedByUid: requestedByUid || uid,
+          retryRequestedAt: now,
+          updatedAt: now,
+          startedAt: FieldValue.delete(),
+          completedAt: FieldValue.delete(),
+          result: FieldValue.delete(),
+          provider: FieldValue.delete(),
+          model: FieldValue.delete(),
+          error: FieldValue.delete(),
+        }, {merge: true});
+        return {
+          created: false,
+          reason: retry.reason,
+          status: "retry_enqueueing",
+          jobId,
+          jobPath,
+          shouldEnqueue: true,
+        };
+      }
       return {
         created: false,
-        reason: "idempotent_existing",
+        reason: retry.reason === "manual_retry_limit" ?
+          "manual_retry_limit" :
+          "idempotent_existing",
         status: existing.status,
         jobId,
         jobPath,
-        shouldEnqueue: existing.status === "enqueue_failed",
+        shouldEnqueue: false,
       };
     }
 
@@ -767,6 +797,7 @@ exports.runResearchJob = onTaskDispatched({
     startedAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
   }, {merge: true});
+  const attemptNumber = Number(job.attempts || 0) + 1;
 
   let autoApprovalPending = false;
   try {
@@ -813,11 +844,15 @@ exports.runResearchJob = onTaskDispatched({
       throw error;
     }
     const retryable = error instanceof ExternalServiceError && error.retryable;
+    const shouldRetry = shouldRetryTaskFailure({
+      retryable,
+      attempts: attemptNumber,
+    });
     await jobRef.set({
-      status: retryable ? "retry_wait" : "failed_terminal",
+      status: shouldRetry ? "retry_wait" : "failed_terminal",
       error: {
         code: error?.reason ||
-          (retryable ? "external_retryable" : "external_terminal"),
+          (shouldRetry ? "external_retryable" : "external_terminal"),
         provider: error?.provider || "unknown",
         status: error?.status || 0,
         retryAfterSeconds: error?.retryAfterSeconds || 0,
@@ -826,6 +861,6 @@ exports.runResearchJob = onTaskDispatched({
       },
       updatedAt: FieldValue.serverTimestamp(),
     }, {merge: true});
-    if (retryable) throw error;
+    if (shouldRetry) throw error;
   }
 });

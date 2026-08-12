@@ -264,7 +264,9 @@ Secret Manager：
 6. 在 Worker 完成前修改卡片，確認舊工作變成 `cancelled_stale`。
 7. 測試 5 張卡片，確認 Tasks 每次只執行一張。
 8. 測試 OpenRouter 429，確認進入有限 retry；401／402 必須直接終止。
-9. 最後才將自動排程 `enabled` 設為 `true`。
+9. 確認第 3 次暫時性失敗會轉成 `failed_terminal`；從卡片再按「雲端研讀」可
+   安全重送，最多 2 輪且不重複計入工作額度。
+10. 最後才將自動排程 `enabled` 設為 `true`。
 
 ## 13. 回復方式
 

@@ -3,16 +3,25 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const {
+  MAX_MANUAL_RETRIES,
+  MAX_TASK_ATTEMPTS,
+  PROMPT_VERSION,
   checkBudget,
   classifySource,
   createResearchJobId,
   extractUrls,
   getNextRunAt,
+  getManualRetryDecision,
   getUsagePeriodIds,
   isResearchCandidate,
   normalizeAutomationSettings,
+  shouldRetryTaskFailure,
   sourceFingerprint,
 } = require("../src/job-policy");
+
+test("structured result prompt version invalidates legacy deterministic jobs", () => {
+  assert.equal(PROMPT_VERSION, "cloud-research-v3-structured-results");
+});
 
 test("automation settings stay within cost-safe limits", () => {
   const settings = normalizeAutomationSettings({
@@ -117,4 +126,41 @@ test("usage periods are calculated in Asia/Taipei", () => {
     dayId: "day-2026-07-28",
     monthId: "month-2026-07",
   });
+});
+
+test("failed jobs allow two bounded manual retries while enqueue failures stay retryable", () => {
+  assert.equal(MAX_MANUAL_RETRIES, 2);
+  assert.deepEqual(getManualRetryDecision({
+    status: "failed_terminal",
+    manualRetryCount: 0,
+  }), {
+    allowed: true,
+    reason: "manual_retry",
+    nextManualRetryCount: 1,
+  });
+  assert.deepEqual(getManualRetryDecision({
+    status: "failed_terminal",
+    manualRetryCount: 2,
+  }), {
+    allowed: false,
+    reason: "manual_retry_limit",
+    nextManualRetryCount: 2,
+  });
+  assert.deepEqual(getManualRetryDecision({
+    status: "enqueue_failed",
+    manualRetryCount: 2,
+  }), {
+    allowed: true,
+    reason: "enqueue_retry",
+    nextManualRetryCount: 2,
+  });
+  assert.equal(getManualRetryDecision({status: "succeeded"}).allowed, false);
+});
+
+test("retryable task failures become terminal on the final task attempt", () => {
+  assert.equal(MAX_TASK_ATTEMPTS, 3);
+  assert.equal(shouldRetryTaskFailure({retryable: true, attempts: 1}), true);
+  assert.equal(shouldRetryTaskFailure({retryable: true, attempts: 2}), true);
+  assert.equal(shouldRetryTaskFailure({retryable: true, attempts: 3}), false);
+  assert.equal(shouldRetryTaskFailure({retryable: false, attempts: 1}), false);
 });

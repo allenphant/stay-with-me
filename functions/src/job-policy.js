@@ -3,9 +3,11 @@
 const crypto = require("node:crypto");
 
 const APP_ID = "stay-with-me";
-const PROMPT_VERSION = "cloud-research-v2-openrouter";
+const PROMPT_VERSION = "cloud-research-v3-structured-results";
 const DEFAULT_TIME_ZONE = "Asia/Taipei";
 const MAX_CARD_TEXT_LENGTH = 20_000;
+const MAX_TASK_ATTEMPTS = 3;
+const MAX_MANUAL_RETRIES = 2;
 const INTERVALS_MS = Object.freeze({
   "6h": 6 * 60 * 60 * 1000,
   "12h": 12 * 60 * 60 * 1000,
@@ -173,11 +175,47 @@ function checkBudget({
   return {allowed: true, reason: ""};
 }
 
+function getManualRetryDecision(job = {}) {
+  const manualRetryCount = clampInteger(job.manualRetryCount, 0, MAX_MANUAL_RETRIES, 0);
+  if (job.status === "enqueue_failed") {
+    return {
+      allowed: true,
+      reason: "enqueue_retry",
+      nextManualRetryCount: manualRetryCount,
+    };
+  }
+  if (job.status !== "failed_terminal") {
+    return {
+      allowed: false,
+      reason: "status_not_retryable",
+      nextManualRetryCount: manualRetryCount,
+    };
+  }
+  if (manualRetryCount >= MAX_MANUAL_RETRIES) {
+    return {
+      allowed: false,
+      reason: "manual_retry_limit",
+      nextManualRetryCount: manualRetryCount,
+    };
+  }
+  return {
+    allowed: true,
+    reason: "manual_retry",
+    nextManualRetryCount: manualRetryCount + 1,
+  };
+}
+
+function shouldRetryTaskFailure({retryable, attempts}) {
+  return retryable === true && Number(attempts || 0) < MAX_TASK_ATTEMPTS;
+}
+
 module.exports = {
   APP_ID,
   DEFAULT_AUTOMATION_SETTINGS,
   DEFAULT_TIME_ZONE,
   INTERVALS_MS,
+  MAX_MANUAL_RETRIES,
+  MAX_TASK_ATTEMPTS,
   PROMPT_VERSION,
   checkBudget,
   classifySource,
@@ -185,11 +223,13 @@ module.exports = {
   estimateJobCostCents,
   extractUrls,
   getCardPath,
+  getManualRetryDecision,
   getNextRunAt,
   getResearchJobPath,
   getUsagePeriodIds,
   isResearchCandidate,
   normalizeAutomationSettings,
   normalizeHttpUrl,
+  shouldRetryTaskFailure,
   sourceFingerprint,
 };

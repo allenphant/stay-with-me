@@ -1270,15 +1270,19 @@
 
         function describeCloudEnqueueResult(result = {}) {
             if (result.reason === 'queued') return '已送入雲端佇列，完成後會出現在待審核。';
+            if (result.reason === 'manual_retry') return '已重新送入雲端研讀；本次不會重複計入工作額度。';
+            if (result.reason === 'enqueue_retry') return '先前送入佇列失敗，現在已重新送出。';
+            if (result.reason === 'manual_retry_limit') return '這份內容已達手動重試上限；請確認來源或修改卡片後再建立新工作。';
             if (result.reason === 'idempotent_existing') {
                 const statusLabels = {
                     queued: '已在雲端排隊',
+                    retry_enqueueing: '正在重新送入雲端佇列',
                     running: '正在雲端研讀',
                     retry_wait: '暫時失敗，等待自動重試',
                     pending_review: '結果已在待審核',
                     succeeded: '這份卡片內容已完成研讀',
                     discarded: '這份卡片內容的結果已捨棄',
-                    failed_terminal: '先前研讀失敗；修改卡片內容後可建立新工作',
+                    failed_terminal: '先前研讀失敗；再按一次可安全重試',
                     blocked_budget: '已被每日或每月預算上限阻擋'
                 };
                 return statusLabels[result.status] || '相同內容已有雲端工作，不會重複計費。';
