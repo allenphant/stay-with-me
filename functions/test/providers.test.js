@@ -3,12 +3,15 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const {
+  ExternalServiceError,
+  RESEARCH_RESULT_SCHEMA,
   buildUnparsedYouTubeResult,
   extractGenerateContentText,
   extractInteractionText,
   extractOpenRouterText,
   isFreeTextModel,
   normalizeResearchResult,
+  parseResearchResult,
   selectOpenRouterFreeModels,
   serviceErrorFromResponse,
   stripJsonFence,
@@ -34,6 +37,44 @@ test("normalizes model result and limits tags", () => {
     limitations: "無",
     sourceUrl: "https://example.com",
   });
+});
+
+test("normalizes common model aliases and wrapped results", () => {
+  assert.deepEqual(normalizeResearchResult({result: {
+    summary: "摘要",
+    recommendation: "值得閱讀",
+    keyPoints: ["第一點", "第二點"],
+    tags: "網路、標準",
+    caveats: "僅供示範",
+  }}, "https://example.com"), {
+    tldr: "摘要",
+    verdict: "值得閱讀",
+    notes: "第一點\n第二點",
+    suggestedTags: ["網路", "標準"],
+    limitations: "僅供示範",
+    sourceUrl: "https://example.com",
+  });
+});
+
+test("rejects parseable but incomplete research JSON", () => {
+  assert.throws(
+    () => parseResearchResult("{}", "https://example.com", "openrouter"),
+    (error) => {
+      assert.ok(error instanceof ExternalServiceError);
+      assert.equal(error.reason, "invalid_result");
+      assert.equal(error.retryable, true);
+      return true;
+    },
+  );
+});
+
+test("research schema requires every non-empty field and at least one tag", () => {
+  assert.deepEqual(RESEARCH_RESULT_SCHEMA.required, [
+    "tldr", "verdict", "notes", "suggestedTags", "limitations",
+  ]);
+  assert.equal(RESEARCH_RESULT_SCHEMA.additionalProperties, false);
+  assert.equal(RESEARCH_RESULT_SCHEMA.properties.tldr.minLength, 1);
+  assert.equal(RESEARCH_RESULT_SCHEMA.properties.suggestedTags.minItems, 1);
 });
 
 test("extracts text from Gemini generateContent and Interactions shapes", () => {
@@ -77,17 +118,18 @@ test("selects only free structured text models and honors a free preference", ()
       context_length: 64_000,
       pricing: {prompt: "0", completion: "0"},
       architecture: {input_modalities: ["text"]},
-      supported_parameters: ["response_format"],
+      supported_parameters: ["response_format", "structured_outputs"],
     },
     {
       id: "free/mistral",
       context_length: 32_000,
       pricing: {prompt: "0", completion: "0"},
       architecture: {input_modalities: ["text"]},
-      supported_parameters: ["structured_outputs"],
+      supported_parameters: ["response_format", "structured_outputs"],
     },
   ];
   assert.equal(isFreeTextModel(models[0]), false);
+  assert.equal(isFreeTextModel(models[1]), false);
   assert.equal(isFreeTextModel(models[3]), true);
   assert.deepEqual(
     selectOpenRouterFreeModels(models, "free/mistral").map((model) => model.id),

@@ -4,10 +4,46 @@ const DEFAULT_SYSTEM_PROMPT = [
   "你是可靠的繁體中文研究助理。",
   "只根據提供的來源整理，不得補寫來源沒有提到的事實。",
   "回傳 JSON，不要 Markdown。",
-  "必須包含 tldr、verdict、notes、suggestedTags、limitations。",
+  "只能使用 tldr、verdict、notes、suggestedTags、limitations 這五個固定鍵名。",
+  "tldr、verdict、notes、limitations 都不可為空；若沒有已知限制，limitations 請填『無』。",
   "suggestedTags 最多 5 個簡短繁體中文詞彙。",
   "若來源有影片但無法解析，必須在 limitations 明確說明。",
 ].join("\n");
+
+const RESEARCH_RESULT_SCHEMA = {
+  type: "object",
+  properties: {
+    tldr: {
+      type: "string",
+      minLength: 1,
+      description: "來源內容的一句繁體中文摘要。",
+    },
+    verdict: {
+      type: "string",
+      minLength: 1,
+      description: "這份來源的價值、適用情境或是否值得深入閱讀。",
+    },
+    notes: {
+      type: "string",
+      minLength: 1,
+      description: "只根據來源整理的詳細繁體中文重點。",
+    },
+    suggestedTags: {
+      type: "array",
+      minItems: 1,
+      maxItems: 5,
+      items: {type: "string", minLength: 1},
+      description: "1 到 5 個簡短繁體中文標籤。",
+    },
+    limitations: {
+      type: "string",
+      minLength: 1,
+      description: "資料限制；若沒有已知限制請填『無』。",
+    },
+  },
+  required: ["tldr", "verdict", "notes", "suggestedTags", "limitations"],
+  additionalProperties: false,
+};
 
 const OPENROUTER_MODELS_URL = "https://openrouter.ai/api/v1/models";
 const OPENROUTER_CHAT_URL = "https://openrouter.ai/api/v1/chat/completions";
@@ -137,22 +173,89 @@ function stripJsonFence(text) {
     .trim();
 }
 
+function firstDefined(value, keys) {
+  for (const key of keys) {
+    if (value?.[key] !== undefined && value[key] !== null) return value[key];
+  }
+  return "";
+}
+
+function normalizeNarrative(value) {
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item || "").trim()).filter(Boolean).join("\n");
+  }
+  return String(value || "").trim();
+}
+
+function normalizeSuggestedTags(value) {
+  const tags = Array.isArray(value) ?
+    value :
+    String(value || "").split(/[,，、]/);
+  return tags
+    .map((tag) => typeof tag === "object" ? tag?.name || tag?.label : tag)
+    .map((tag) => String(tag || "").trim())
+    .filter(Boolean)
+    .slice(0, 5);
+}
+
+function unwrapResearchResult(value) {
+  const parsed = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  const nested = [parsed.result, parsed.research, parsed.output, parsed.data]
+    .find((candidate) => candidate && typeof candidate === "object" && !Array.isArray(candidate));
+  return nested || parsed;
+}
+
 function normalizeResearchResult(value, sourceUrl) {
-  const parsed = value && typeof value === "object" ? value : {};
-  const suggestedTags = Array.isArray(parsed.suggestedTags) ?
-    parsed.suggestedTags
-      .map((tag) => String(tag || "").trim())
-      .filter(Boolean)
-      .slice(0, 5) :
-    [];
+  const parsed = unwrapResearchResult(value);
   return {
-    tldr: String(parsed.tldr || "").trim(),
-    verdict: String(parsed.verdict || "").trim(),
-    notes: String(parsed.notes || "").trim(),
-    suggestedTags,
-    limitations: String(parsed.limitations || "").trim(),
+    tldr: normalizeNarrative(firstDefined(parsed, [
+      "tldr", "summary", "shortSummary", "overview", "摘要", "總結",
+    ])),
+    verdict: normalizeNarrative(firstDefined(parsed, [
+      "verdict", "assessment", "recommendation", "conclusion", "評價", "建議", "結論",
+    ])),
+    notes: normalizeNarrative(firstDefined(parsed, [
+      "notes", "detailedNotes", "keyPoints", "analysis", "content", "筆記", "重點",
+    ])),
+    suggestedTags: normalizeSuggestedTags(firstDefined(parsed, [
+      "suggestedTags", "suggested_tags", "tags", "keywords", "建議標籤", "標籤",
+    ])),
+    limitations: normalizeNarrative(firstDefined(parsed, [
+      "limitations", "caveats", "constraints", "限制", "侷限",
+    ])),
     sourceUrl,
   };
+}
+
+function isCompleteResearchResult(result) {
+  return [result?.tldr, result?.verdict, result?.notes, result?.limitations]
+    .every((value) => String(value || "").trim()) &&
+    Array.isArray(result?.suggestedTags) && result.suggestedTags.length > 0;
+}
+
+function parseResearchResult(text, sourceUrl, provider) {
+  let parsed;
+  try {
+    parsed = JSON.parse(stripJsonFence(text));
+  } catch {
+    throw new ExternalServiceError(`${provider} 回傳的 JSON 無法解析`, {
+      provider,
+      retryable: false,
+      reason: "invalid_json",
+      details: String(text || "").slice(0, 500),
+    });
+  }
+  const result = normalizeResearchResult(parsed, sourceUrl);
+  if (!isCompleteResearchResult(result)) {
+    throw new ExternalServiceError(`${provider} 回傳的研讀欄位不完整`, {
+      provider,
+      retryable: true,
+      retryAfterSeconds: 60,
+      reason: "invalid_result",
+      details: String(text || "").slice(0, 500),
+    });
+  }
+  return result;
 }
 
 function extractGenerateContentText(data) {
@@ -197,7 +300,6 @@ function isFreeTextModel(model) {
   }
   const supported = model?.supported_parameters;
   if (Array.isArray(supported) && supported.length &&
-      !supported.includes("response_format") &&
       !supported.includes("structured_outputs")) {
     return false;
   }
@@ -210,8 +312,8 @@ function scoreFreeModel(model) {
     model.supported_parameters :
     [];
   let score = Math.min(Number(model?.context_length || 0), 200_000) / 10_000;
-  if (supported.includes("response_format")) score += 100;
-  if (supported.includes("structured_outputs")) score += 80;
+  if (supported.includes("structured_outputs")) score += 180;
+  if (supported.includes("response_format")) score += 20;
   if (/mistral|qwen|gemma|llama|nemotron/.test(id)) score += 20;
   if (/instruct|chat/.test(id)) score += 10;
   return score;
@@ -297,7 +399,14 @@ async function analyzeWebSourceWithOpenRouter({
           content: `請整理以下來源。\n來源網址：${sourceUrl}\n\n來源文字：\n${sourceText}`,
         },
       ],
-      response_format: {type: "json_object"},
+      response_format: {
+        type: "json_schema",
+        json_schema: {
+          name: "research_result",
+          strict: true,
+          schema: RESEARCH_RESULT_SCHEMA,
+        },
+      },
       temperature: 0.1,
       provider: {
         allow_fallbacks: true,
@@ -321,20 +430,11 @@ async function analyzeWebSourceWithOpenRouter({
       reason: "empty_response",
     });
   }
-  try {
-    return {
-      ...normalizeResearchResult(JSON.parse(stripJsonFence(text)), sourceUrl),
-      provider: "jina+openrouter",
-      model: String(data?.model || selectedModel),
-    };
-  } catch {
-    throw new ExternalServiceError("OpenRouter 回傳的 JSON 無法解析", {
-      provider: "openrouter",
-      retryable: false,
-      reason: "invalid_json",
-      details: text.slice(0, 500),
-    });
-  }
+  return {
+    ...parseResearchResult(text, sourceUrl, "openrouter"),
+    provider: "jina+openrouter",
+    model: String(data?.model || selectedModel),
+  };
 }
 
 function buildUnparsedYouTubeResult(sourceUrl) {
@@ -393,15 +493,7 @@ async function analyzeWebSource({
       retryable: false,
     });
   }
-  try {
-    return normalizeResearchResult(JSON.parse(stripJsonFence(text)), sourceUrl);
-  } catch {
-    throw new ExternalServiceError("Gemini 回傳的 JSON 無法解析", {
-      provider: "gemini",
-      retryable: false,
-      details: text.slice(0, 500),
-    });
-  }
+  return parseResearchResult(text, sourceUrl, "gemini");
 }
 
 async function analyzeYouTubeSource({
@@ -484,6 +576,7 @@ async function analyzeSource(options) {
 module.exports = {
   AUTO_FREE_MODEL,
   DEFAULT_SYSTEM_PROMPT,
+  RESEARCH_RESULT_SCHEMA,
   ExternalServiceError,
   analyzeSource,
   analyzeWebSource,
@@ -494,8 +587,10 @@ module.exports = {
   extractInteractionText,
   extractOpenRouterText,
   isFreeTextModel,
+  isCompleteResearchResult,
   listOpenRouterFreeModels,
   normalizeResearchResult,
+  parseResearchResult,
   readWithJina,
   selectOpenRouterFreeModels,
   serviceErrorFromResponse,
