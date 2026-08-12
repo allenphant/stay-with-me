@@ -1,5 +1,9 @@
 "use strict";
 
+const OpenCC = require("opencc-js");
+
+const toTaiwanTraditional = OpenCC.Converter({from: "cn", to: "twp"});
+
 const DEFAULT_SYSTEM_PROMPT = [
   "你是可靠的繁體中文研究助理。",
   "只根據提供的來源整理，不得補寫來源沒有提到的事實。",
@@ -183,9 +187,11 @@ function firstDefined(value, keys) {
 
 function normalizeNarrative(value) {
   if (Array.isArray(value)) {
-    return value.map((item) => String(item || "").trim()).filter(Boolean).join("\n");
+    return toTaiwanTraditional(
+      value.map((item) => String(item || "").trim()).filter(Boolean).join("\n"),
+    );
   }
-  return String(value || "").trim();
+  return toTaiwanTraditional(String(value || "").trim());
 }
 
 function normalizeSuggestedTags(value) {
@@ -194,7 +200,7 @@ function normalizeSuggestedTags(value) {
     String(value || "").split(/[,，、]/);
   return tags
     .map((tag) => typeof tag === "object" ? tag?.name || tag?.label : tag)
-    .map((tag) => String(tag || "").trim())
+    .map((tag) => toTaiwanTraditional(String(tag || "").trim()))
     .filter(Boolean)
     .slice(0, 5);
 }

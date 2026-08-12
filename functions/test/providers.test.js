@@ -57,6 +57,23 @@ test("normalizes common model aliases and wrapped results", () => {
   });
 });
 
+test("converts simplified model output to Taiwan traditional Chinese", () => {
+  assert.deepEqual(normalizeResearchResult({
+    tldr: "软件文档",
+    verdict: "无需许可",
+    notes: "缓存快照与鼠标操作",
+    suggestedTags: ["软件", "文档"],
+    limitations: "信息有限",
+  }, "https://example.com"), {
+    tldr: "軟體文件",
+    verdict: "無需許可",
+    notes: "快取快照與滑鼠操作",
+    suggestedTags: ["軟體", "文件"],
+    limitations: "資訊有限",
+    sourceUrl: "https://example.com",
+  });
+});
+
 test("rejects parseable but incomplete research JSON", () => {
   assert.throws(
     () => parseResearchResult("{}", "https://example.com", "openrouter"),
