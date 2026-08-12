@@ -1,93 +1,74 @@
-# 完成 Stay With Me 品牌清洗、雙人綁定 UI 與空間改名功能，前後端均已上線（待雙帳號實測）
+# 部署雲端研讀安全自動寫入，功能已上線（雙帳號實測延後）
 
-> **更新時間**：2026-08-04 09:52
+> **更新時間**：2026-08-12 16:10
 > **專案核心**：以 Vanilla JS、Firebase Authentication／Firestore／Functions 與 GitHub Pages 打造的雙人共編生活空間。
 
 ## 本次對話目標
 
-修正 Firebase Browser key 的 allowed referrer 以解除 GitHub Pages 登入失敗，跑完資料隔離驗收清單，清理舊專案誤部署的 Functions，將殘留的 My AI Brain 品牌字樣改為 Stay With Me，並補上雙人綁定的 UI 與空間改名功能。
+依使用者決定先跳過雙帳號真人驗收，補齊雲端研讀的手動審核／安全自動寫入流程，完成 commit、push、Functions 與 GitHub Pages 部署。
 
 ## 已完成任務
 
-* **修正 Browser key referrer（登入 blocker 解除）**：key `9306a3ce-9b06-47e8-8371-6a12cb6a73ac` 的 `allowedReferrers` 由 `https://allenphant.github.io/stay-with-me/*` 改為 `https://allenphant.github.io/*`。已逐字元驗證無隱藏 newline，且 `apiTargets` 仍為原本 9 個 service 未被清空。使用者已確認登入成功。
-* **完成資料隔離驗收**：以 Firestore REST 確認兩專案 namespace 互不重疊，`dating-with-viola` 僅有 `artifacts/stay-with-me`、`my-ai-brain-6867e` 僅有 `artifacts/my-personal-ai-brain`。測試卡片落於 `artifacts/stay-with-me/users/sk3Hgr.../inbox/T7WR2nAYvARMEupfAZ9y`。
-* **清理舊專案誤部署 Functions**：從 `my-ai-brain-6867e`（`asia-east1`）刪除 `ensurePersonalSpace`、`createSpaceInvite`、`acceptSpaceInvite`、`removeSpaceMember`。刪除前已驗證舊站線上 `app.js` 對這 4 個的引用次數為 0。刪除後該專案剩正好 5 個 research Functions。
-* **品牌字樣清洗為 Stay With Me**
-  * `index.html`：`<title>`、H1、Guide 標籤、頁尾標語；並修正兩個原本指向舊站與舊 repo 的**錯誤連結**
-  * `manifest.json`：`name` 與 `short_name`
-  * `sw.js`：`CACHE_NAME` 由 `ai-brain-v11` → `stay-with-me-v12`（強制舊快取失效，否則改名不會生效）
-  * `package.json`、`functions/package.json`、`functions/src/providers.js`（OpenRouter APP_URL／APP_NAME）
-  * `tests/help-center.test.mjs`、`tests/card-web-research.browser.mjs`（同步斷言）
-* **雙人綁定 UI**：後端本就有雙人上限，但前端不反映，導致滿員仍可按邀請。
-  * `index.html`：新增 `space-pair-status`
-  * `app.js`：`renderSpacePairStatus()`；`memberCount >= 2` 時隱藏邀請表單；成員 listener 改呼叫 `renderSpaceControls()`
-* **空間改名功能**
-  * `functions/src/index.js`：新增 owner-only Callable `renameSpace`
-  * `index.html`：新增 `space-rename-row`
-  * `app.js`：`renameSpaceCallable`、`renameSpace()` 與按鈕綁定
-* **部署**：PR [#3](https://github.com/allenphant/stay-with-me/pull/3) 已 squash 合併至 `main`；後端 10 個 Functions 全數 `ACTIVE`（`renameSpace` 為新建）。線上已驗證 `<title>` 為 `Stay With Me`、`app.js` 含 `renameSpaceCallable`。
-* **驗證**：`npm test` 98/98、`functions` 21/21、JSON／JS 語法檢查、`git diff --check` 全通過。
+* **補齊雲端研讀審核模式**：設定頁加入「手動審核／自動寫入」，前端同步本機與伺服器設定，建立工作時快照 `approvalMode`；YouTube 維持 NotebookLM 人工流程。
+  * `index.html`
+  * `app.js`
+* **完成安全自動寫入後端**：一般網址完成研讀後，以 Firestore transaction 驗證卡片版本並一次更新卡片、EditorJS 詳細筆記、搜尋索引、建議 Tag 與 job 狀態；支援重送冪等，卡片變更或刪除時標記 `cancelled_stale`。
+  * `functions/src/index.js`
+  * `functions/src/auto-approval.js`
+* **補上自動寫入測試**：涵蓋純函式、前後端契約與瀏覽器整合；`npm test` 共 17 個測試檔全數通過，JS 語法、`git diff --check` 與瀏覽器 `pageErrors` 亦通過。
+  * `functions/test/auto-approval.test.js`
+  * `tests/cloud-auto-approval.test.mjs`
+  * `tests/cloud-research.test.mjs`
+  * `tests/card-web-research.browser.mjs`
+* **更新操作與架構文件**：說明 `approvalMode`、transaction 邊界、YouTube 例外與部署安全設定。
+  * `README.md`
+  * `docs/CLOUD_RESEARCH_ARCHITECTURE.md`
+  * `docs/CLOUD_SETUP_GUIDE.md`
+* **提交並部署**：commit `3744235`（`Add safe cloud research auto-write`）已推送到功能分支與 `main`。Firebase 專案 `dating-with-viola` 的 10 個 Gen2 Functions 更新成功；`runResearchJob` 為 `ACTIVE`、Node.js 22。GitHub Pages 線上 `index.html`／`app.js` 與本機檔案 SHA-256 完全一致。
+  * `functions/src/index.js`
+  * `index.html`
+  * `app.js`
+* **核對部署安全設定**：既有 Cloud Tasks enqueuer、serviceAccountUser、Cloud Run invoker IAM 均正確；將 Firebase 部署重設的 Queue 速率恢復為同時 1 筆、約每分鐘 1 筆，回讀確認 Queue 為 `RUNNING`。
+  * `scripts/deploy-functions.sh`
 
 ## 進行中與卡點 (In Progress & Blockers)
 
-* **目前進度**：所有程式改動與部署都已完成並上線。
-* **下一步**：唯一剩下的驗收項目是**雙帳號實測** —— 建立邀請碼 → Viola 貼上加入 → 共同編輯 → 移除成員；順便驗證新的改名功能與綁定狀態顯示。
+* **目前進度**：程式、測試、commit、push、Functions 與 GitHub Pages 部署皆已完成；尚未執行需要真人帳號／實際網址的端到端驗收。
+* **下一步**：先用一張一般網址驗證 `manual → pending_review`，再切換 `auto` 驗證筆記、搜尋索引與 Tag 只寫入一次且 job 為 `succeeded`；雙帳號邀請與共同空間實測留到功能批次完成後。
 * **卡點 (Blocker)**：無。
 
 ## 避坑指南 (Failed Approaches)
 
-* **只允許 GitHub Pages repository path**：設定 `https://allenphant.github.io/stay-with-me/*`。
-  * **為什麼失敗**：Firebase Auth 是以 origin `https://allenphant.github.io` 檢查 API key，不含 path。
-  * **教訓**：Browser key 的 GitHub Pages referrer 必須是 `https://allenphant.github.io/*`。
-* **用 Firestore REST 列出 `artifacts` 下的 namespace 得到空結果**，誤判資料庫是空的。
-  * **為什麼失敗**：`artifacts/{appId}` 是沒有欄位的隱含父文件（implicit parent），一般 list 不會回傳。
-  * **教訓**：查這類路徑一定要加 `showMissing=true`。
-* **把「對方登入成功」當成「已加入空間」**。
-  * **為什麼失敗**：任何帳號登入時 `ensurePersonalSpace` 都會自動建立**自己的**個人空間，與邀請流程無關。
-  * **教訓**：登入 ≠ 加入，必須另外走建立邀請碼／貼上加入兩步。
-* **直接合併 PR #3 到 `main`**，出現 `the merge commit cannot be cleanly created`。
-  * **為什麼失敗**：PR #2 是 squash 合併，`main` 上的 `a4798fd` 已包含分支前三個 commit 的內容，造成重複衝突。
-  * **教訓**：此 repo 一律 squash 合併，後續分支要從 `origin/main` 開新分支 cherry-pick，驗證 `git diff` 與原 commit 為空後再 force-with-lease 更新 PR 分支。
-* **以 `export` 環境變數餵給 `firebase deploy --non-interactive`**。
-  * **為什麼失敗**：CLI 只讀 dotenv 檔，環境變數無效；且即使 `index.js` 的 `defineString` 已有 `default`，非互動模式仍會索取 `GEMINI_RESEARCH_MODEL`／`OPENROUTER_RESEARCH_MODEL`。
-  * **教訓**：需建立 `functions/.env`（已被 `.gitignore` 第 7 行排除）。目前值與線上原值相同，部署未改變行為。
-* **以為 Firebase CLI 能沿用 gcloud 憑證**。
-  * **為什麼失敗**：`firebase projects:list` 直接報錯，Firebase CLI 有完全獨立的登入。
-  * **教訓**：本機部署前需另外執行一次 `firebase login`。
+* **以 GitHub App 建立 PR**：功能分支推送成功後呼叫 GitHub connector 建立 draft PR。
+  * **為什麼失敗**：GitHub API 回傳 `403 Resource not accessible by integration`，本機 `gh` 憑證也已失效。
+  * **教訓**：恢復 GitHub App／`gh` 寫入權限前，無法走 PR 自動化；本次只有一筆已驗證 commit，因此以 fast-forward 推送 `main` 完成發布。
+* **在受限環境使用 `npx firebase-tools`**：嘗試沿用部署腳本的 `npx`。
+  * **為什麼失敗**：套件查詢遇到 `EAI_AGAIN`，但系統已安裝並登入全域 Firebase CLI 15.25.1。
+  * **教訓**：此環境部署直接使用全域 `firebase`，仍須明確帶 `--only functions:research-backend --project dating-with-viola`。
+* **假設 Firebase 部署會保留 Cloud Tasks 速率**：部署後只看 Functions 成功訊息。
+  * **為什麼失敗**：部署把 `runResearchJob` 重設為每秒 500 筆，即使 `maxConcurrentDispatches` 仍為 1，也可能快速消耗外部 API 與成本。
+  * **教訓**：每次 Functions 部署後都要執行／核對 `scripts/deploy-functions.sh` 的 Queue 限流步驟。
+* **使用 `codebase-memory-mcp update -y` 更新索引**：把套件更新指令誤認為 repository reindex。
+  * **為什麼失敗**：該指令需要互動式 TTY，並先移除本機索引快取。
+  * **教訓**：程式碼知識圖譜應使用 MCP `index_repository`；本次已重新索引完成（663 nodes／1795 edges）。
 
 ## 關鍵決策 (Key Decisions)
 
-* **[共用其中一人的空間，不合併資料]**：`acceptSpaceInvite` 是把受邀者加入**擁有者既有的空間**，不會建立第三個空間，也不搬移任何卡片。
-  * **原因**：space ID 同時就是資料根目錄 ID（個人空間 ID = 擁有者 uid），沿用可做到 no-copy migration。
-  * **被否決的方案**：建立獨立共同空間並合併雙方資料（需搬移資料、成本與風險都高）。
-  * **副作用**：受邀者原本空間的卡片不會帶過來，仍只有本人看得到，可用「目前使用」下拉切換。
-* **[空間名稱反正規化]**：名稱同時存在 `spaces/{id}.name` 與每位成員的 `users/{uid}/memberships/{spaceId}.name`。
-  * **原因**：讓客戶端列出可用空間時不必逐一讀取 space 文件。
-  * **代價**：`renameSpace` 必須以 batch 同時更新空間文件與所有成員的 membership，否則另一方看到舊名稱。
-* **[改名走 Callable 而非客戶端直寫]**：`firestore.rules` 對 `spaces` 是 `allow write: if false`。
-  * **原因**：維持 server-only 的成員與空間中繼資料邊界。
-* **[保留隔離守門測試的舊專案字樣]**：`tests/shared-space.test.mjs:44,58` 仍提及 `my-ai-brain-6867e`。
-  * **原因**：那是 `assert.doesNotMatch` 斷言，確保正式設定不會再連回舊專案；改掉等於拆掉防護。
-* **[雙人上限維持在後端]**：UI 只做狀態呈現，實際限制仍由 `createSpaceInvite`／`acceptSpaceInvite` 檢查 `memberCount >= 2`。
+* **[工作建立時快照 approvalMode]**：排隊中的工作不跟隨之後的設定變更。
+  * **原因**：避免使用者送出時選手動審核，等待期間切成自動後，舊工作意外直接修改卡片。
+  * **被否決的方案**：Worker 執行時才讀取最新全域設定。
+* **[以 Firestore transaction 作自動寫入的冪等邊界]**：卡片、詳細筆記、Tag、搜尋索引與 job 狀態一起提交。
+  * **原因**：Cloud Tasks 至少一次傳送與 commit acknowledgment 不確定時，不能留下半套資料或重複追加。
+  * **被否決的方案**：依序寫入多個文件後再把 job 標為成功。
+* **[自動重試沿用已保存模型結果]**：`auto_approving` 重試不再呼叫模型。
+  * **原因**：降低外部 API 成本，並避免同一 job 因重送產生不同內容。
+  * **被否決的方案**：每次 Task retry 都重新研讀與生成。
+* **[YouTube 永遠保留人工審核]**：即使模式為 `auto`，YouTube 仍進入待審核／NotebookLM 流程。
+  * **原因**：目前 Worker 沒有可靠的影片內容結果，不應把人工交接提示寫成正式研讀筆記。
+  * **被否決的方案**：把所有來源一律自動寫入。
 
 ## 交接備忘錄 (Handover Context)
 
-專案已全面上線且無卡點。正式站 `https://allenphant.github.io/stay-with-me/`，Firebase project ID 為 `dating-with-viola`（顯示名稱 Stay With Me），資料 namespace `stay-with-me`，Functions 位於 `asia-east1`。
+正式站是 `https://allenphant.github.io/stay-with-me/`；Firebase project ID 是 `dating-with-viola`，資料 namespace 是 `stay-with-me`，Functions 位於 `asia-east1`。目前 `main` 已包含 commit `3744235`，線上前端與本機完全一致，`runResearchJob` 更新時間為 `2026-08-12T08:05:57Z` 且狀態 `ACTIVE`。Queue `runResearchJob` 為 `RUNNING`，`maxConcurrentDispatches=1`、`maxDispatchesPerSecond=0.016667`。
 
-目前 Firestore 有兩個各自獨立的個人空間（`sk3Hgr...` 王睿君、`n2yU5Q...` Viola Weng，`memberCount` 皆為 1），**尚未綁定**。
-
-接手後第一步請先閱讀 `/home/cdc/CCdevelopment/stay-with-me/source/CURRENT_STATE.md`，接著協助使用者完成唯一剩下的驗收：雙帳號邀請流程。UI 入口在**設定 Modal** 的「共同空間」區塊，開啟方式為頁首粉紅愛心鈕（登入後才顯示）或側邊欄齒輪。
-
-**提醒使用者一個取捨**：加入 = 受邀者進入擁有者的空間，受邀者自己空間的卡片不會跟過來。趁雙方資料都還少，先決定哪一個當共同空間。
-
-測試若出錯，可用下列指令查 log 與資料狀態：
-
-```bash
-gcloud functions logs read acceptSpaceInvite --project=dating-with-viola --region=asia-east1 --limit=30
-
-TOKEN=$(gcloud auth print-access-token)
-curl -sS -H "Authorization: Bearer $TOKEN" \
-  "https://firestore.googleapis.com/v1/projects/dating-with-viola/databases/(default)/documents/artifacts/stay-with-me/spaces?pageSize=20"
-```
-
-本機環境：gcloud 已登入 `allenphant11@gmail.com`，firebase-tools 15.25.1 已安裝並登入，`gh` 可用。
+雙帳號邀請／共同空間實測依使用者決定延後。下一個 AI 接手後先閱讀 `/home/cdc/CCdevelopment/stay-with-me/source/CURRENT_STATE.md`，第一件事是用一張一般網址分別驗證手動審核與自動寫入；確認 job 狀態、筆記、搜尋索引與 Tag 後，再繼續補下一個功能。若要恢復 PR 流程，先修復 GitHub App 或 `gh` 的寫入權限。
