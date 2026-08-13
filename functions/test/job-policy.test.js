@@ -163,4 +163,5 @@ test("retryable task failures become terminal on the final task attempt", () => 
   assert.equal(shouldRetryTaskFailure({retryable: true, attempts: 2}), true);
   assert.equal(shouldRetryTaskFailure({retryable: true, attempts: 3}), false);
   assert.equal(shouldRetryTaskFailure({retryable: false, attempts: 1}), false);
+  assert.equal(shouldRetryTaskFailure({retryable: true, attempts: 4}), false);
 });

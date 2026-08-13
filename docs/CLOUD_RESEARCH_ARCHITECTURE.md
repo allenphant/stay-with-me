@@ -123,6 +123,8 @@ promptVersion
 - 429／5xx 交由 Cloud Tasks 退避，不在 Function 內 sleep。
 - 暫時性錯誤最多由 Cloud Tasks 嘗試 3 次；最後一次仍失敗會明確轉為
   `failed_terminal`，不會永久停在 `retry_wait`。
+- 自動核准 transaction 也受同一上限約束；最後一次失敗時只會在 job 仍為
+  `auto_approving` 時改成 `failed_terminal`，避免遺失成功回應時倒退 `succeeded`。
 - 同一份卡片內容的 `failed_terminal` 工作可由使用者再按「雲端研讀」安全重試
   2 輪；不重複計入工作額度。`enqueue_failed` 可重新送入且不占手動重試次數。
 

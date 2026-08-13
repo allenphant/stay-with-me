@@ -21,6 +21,7 @@ const {
   getResearchJobPath,
   getUsagePeriodIds,
   isResearchCandidate,
+  MAX_TASK_ATTEMPTS,
   normalizeAutomationSettings,
   shouldRetryTaskFailure,
   sourceFingerprint,
@@ -684,6 +685,30 @@ async function autoApproveResearchJob(jobRef) {
   });
 }
 
+async function markAutoApprovalFailedTerminal(jobRef, error) {
+  return db.runTransaction(async (transaction) => {
+    const jobSnapshot = await transaction.get(jobRef);
+    if (!jobSnapshot.exists) return {status: "missing"};
+    const status = jobSnapshot.data().status;
+    if (status !== "auto_approving") {
+      return {status, unchanged: true};
+    }
+    transaction.set(jobRef, {
+      status: "failed_terminal",
+      error: {
+        code: "auto_approval_failed",
+        provider: "firestore",
+        status: 0,
+        retryAfterSeconds: 0,
+        message: String(error?.message || "automatic approval failed").slice(0, 500),
+        details: "",
+      },
+      updatedAt: FieldValue.serverTimestamp(),
+    }, {merge: true});
+    return {status: "failed_terminal"};
+  });
+}
+
 exports.discoverDueResearchJobs = onSchedule({
   schedule: "every 10 minutes",
   timeZone: "Asia/Taipei",
@@ -747,7 +772,7 @@ exports.runResearchJob = onTaskDispatched({
   maxInstances: 1,
   timeoutSeconds: 300,
   retryConfig: {
-    maxAttempts: 3,
+    maxAttempts: MAX_TASK_ATTEMPTS,
     minBackoffSeconds: 60,
     maxBackoffSeconds: 3600,
     maxRetrySeconds: 24 * 60 * 60,
@@ -765,9 +790,30 @@ exports.runResearchJob = onTaskDispatched({
   if (!jobSnapshot.exists) return;
   const job = jobSnapshot.data();
   if (TERMINAL_JOB_STATUSES.has(job.status)) return;
+  const attemptNumber = Number(job.attempts || 0) + 1;
 
   if (job.status === "auto_approving" && shouldAutoApproveJob(job) && job.result) {
-    await autoApproveResearchJob(jobRef);
+    await jobRef.set({
+      attempts: FieldValue.increment(1),
+      startedAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    }, {merge: true});
+    try {
+      await autoApproveResearchJob(jobRef);
+    } catch (error) {
+      const shouldRetry = shouldRetryTaskFailure({
+        retryable: true,
+        attempts: attemptNumber,
+      });
+      logger.error("automatic research approval retry failed", {
+        jobPath,
+        attemptNumber,
+        shouldRetry,
+        message: String(error?.message || "auto approval failed").slice(0, 500),
+      });
+      if (shouldRetry) throw error;
+      await markAutoApprovalFailedTerminal(jobRef, error);
+    }
     return;
   }
 
@@ -797,7 +843,6 @@ exports.runResearchJob = onTaskDispatched({
     startedAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
   }, {merge: true});
-  const attemptNumber = Number(job.attempts || 0) + 1;
 
   let autoApprovalPending = false;
   try {
@@ -839,9 +884,16 @@ exports.runResearchJob = onTaskDispatched({
       // regress an already-succeeded job and append the result twice on retry.
       logger.error("automatic research approval failed", {
         jobPath,
+        attemptNumber,
         message: String(error?.message || "auto approval failed").slice(0, 500),
       });
-      throw error;
+      const shouldRetry = shouldRetryTaskFailure({
+        retryable: true,
+        attempts: attemptNumber,
+      });
+      if (shouldRetry) throw error;
+      await markAutoApprovalFailedTerminal(jobRef, error);
+      return;
     }
     const retryable = error instanceof ExternalServiceError && error.retryable;
     const shouldRetry = shouldRetryTaskFailure({

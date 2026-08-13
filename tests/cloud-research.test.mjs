@@ -82,6 +82,9 @@ test('failed cloud jobs expose a bounded retry path instead of staying permanent
     assert.match(functionsSource, /status: "retry_enqueueing"/);
     assert.match(functionsSource, /manualRetryCount: retry\.nextManualRetryCount/);
     assert.match(functionsSource, /shouldRetryTaskFailure\(\{[\s\S]+attempts: attemptNumber/);
+    assert.match(functionsSource, /maxAttempts: MAX_TASK_ATTEMPTS/);
+    assert.match(functionsSource, /status !== "auto_approving"/);
+    assert.match(functionsSource, /code: "auto_approval_failed"/);
     assert.match(appSource, /result\.reason === 'manual_retry'/);
     assert.match(appSource, /result\.reason === 'manual_retry_limit'/);
 });
