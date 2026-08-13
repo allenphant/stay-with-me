@@ -1,11 +1,11 @@
-# 一般網址雲端研讀已完成線上驗證，安全重試功能待部署
+# 雲端研讀安全重試已完成 review 並部署上線
 
-> **更新時間**：2026-08-12 17:17
+> **更新時間**：2026-08-13 08:44
 > **專案核心**：以 Vanilla JS、Firebase Authentication／Firestore／Functions 與 GitHub Pages 打造的雙人共編生活空間。
 
 ## 本次對話目標
 
-先用一張一般網址完整驗證雲端研讀的手動審核與自動寫入，再繼續補下一個功能；依使用者先前決定，雙帳號真人實測暫緩。
+review `agent/research-job-retry` 的安全重試功能；確認後合併、push、部署 Functions，並恢復 Queue 每分鐘約一筆的限流。依使用者先前決定，雙帳號真人實測暫緩。
 
 ## 已完成任務
 
@@ -23,9 +23,11 @@
   * `functions/package.json`
   * `functions/package-lock.json`
   * 已提交、推送及部署：`b441fd7 Reject mixed-script research results`、`dc901ea Normalize research output to Taiwan Chinese`
-* **完成安全且有上限的研讀重試功能**：功能目前只在本機分支 `agent/research-job-retry`，commit `2f10681 Add bounded cloud research retries`，尚未推送、合併或部署。
+* **完成安全且有上限的研讀重試功能並發布**：`agent/research-job-retry` 已通過 review，以 fast-forward 合併到 `main`、推送並部署；功能 commit 為 `2f10681 Add bounded cloud research retries`，review 修正為 `232fef1 Harden bounded cloud research retries`。
   * Worker 最多自動嘗試 3 次；第三次可重試錯誤會成為 `failed_terminal`，不再永久停在 `retry_wait`。
   * 同一內容最多允許 2 次人工重試；重用既有 job、清除舊結果與錯誤、重新排隊，且不重複計算用量。單純 `enqueue_failed` 的重新排隊不消耗人工重試次數。
+  * Review 發現模型成功後的自動核准 transaction 仍可能在 Cloud Tasks 耗盡重送後停在 `auto_approving`；現在同樣套用 3 次上限，並只在 job 仍為 `auto_approving` 時以 transaction 改成 `failed_terminal`，避免成功回應遺失時把 `succeeded` 倒退。
+  * Queue 的 `maxAttempts` 與程式判斷共用 `MAX_TASK_ATTEMPTS`，避免部署設定和狀態機分歧。
   * `PROMPT_VERSION` 已升為 `cloud-research-v3-structured-results`，避免舊版確定性空結果 job 阻擋新版有效工作。
   * 前端已補齊人工重試、排隊重試、重試上限與重新排隊中的訊息；架構和設定文件同步更新。
   * `functions/src/job-policy.js`
@@ -35,16 +37,15 @@
   * `tests/cloud-research.test.mjs`
   * `docs/CLOUD_RESEARCH_ARCHITECTURE.md`
   * `docs/CLOUD_SETUP_GUIDE.md`
-* **完成驗證與部署核對**：重試分支已 rebase 到最新 `main`；JS 語法檢查、`npm test` 的 17 個測試檔與 `git diff --check` 全數通過。程式碼知識圖譜也已重建（679 nodes／1826 edges）。
-  * 線上 `main`：`dc901eae3e56a31e7ef136f1b728b1b545ff71e6`
-  * 本機重試分支：`2f106812f65b1daf41dec2b220e98bb7586da00a`
-  * 10 個 Gen2 Functions 均已更新；`runResearchJob` 為 `ACTIVE`、Node.js 22，更新時間 `2026-08-12T08:59:33.388613211Z`。
+* **完成驗證與部署核對**：JS 語法檢查、`npm test` 的 17 個測試檔、完整 Puppeteer 瀏覽器回歸與 `git diff --check` 全數通過；瀏覽器 `pageErrors` 為空。程式碼知識圖譜已依最終程式重建（681 nodes／1835 edges）。
+  * 本次部署的程式 commit：`232fef1071ddfbf92522d2dbd8db0c83caf6e62c`
+  * 10 個 Gen2 Functions 均已成功更新；`runResearchJob` 為 `ACTIVE`、Node.js 22、`maxInstanceCount=1`，更新時間 `2026-08-13T00:43:42.470544060Z`。
   * Queue 已恢復並回讀為 `RUNNING`、`maxConcurrentDispatches=1`、`maxDispatchesPerSecond=0.016667`、`maxAttempts=3`。
 
 ## 進行中與卡點 (In Progress & Blockers)
 
-* **目前進度**：研讀結果完整性、文字品質與台灣繁體正規化已在 `main` 上線，正式環境的手動／自動／冪等流程均已通過。安全重試功能已完成並驗證，但只存在於本機 `agent/research-job-retry`。
-* **下一步**：review `git diff main...agent/research-job-retry`；確認後合併到 `main`、push、部署 Functions，最後再次把 Cloud Tasks Queue 恢復為同時 1 筆、約每分鐘 1 筆並回讀驗證。可再用隔離 job 定向驗證一次終止失敗或人工重試流程。
+* **目前進度**：研讀結果完整性、文字品質、台灣繁體正規化及有上限的自動／人工重試都已在 `main` 上線；正式環境的手動／自動／冪等流程先前已通過，部署與 Queue 限流也已回讀確認。
+* **下一步**：若要再驗證本次重試功能，可用隔離 namespace 建立一個定向 `failed_terminal` job，確認人工重送不增加 usage、最多兩輪；不可啟動 production Scheduler。否則可直接開始下一個尚未補齊的產品功能。
 * **卡點 (Blocker)**：無。GitHub App／本機 `gh` 仍沒有可用寫入權限，但直接 `git push` 可用，不阻擋既定發布方式。
 * **安全性備註**：`npm audit --omit=dev` 為 9 個 moderate、0 high／critical，皆來自既有 Firebase 依賴鏈，不是新增的 `opencc-js`。未執行會造成 Firebase 套件降版／大版本變動的自動修復。
 
@@ -71,6 +72,9 @@
 * **假設 Firebase 部署會保留 Cloud Tasks 速率**：Functions 部署會把 Queue dispatch rate 重設為每秒 500 筆。
   * **為什麼失敗**：Firebase deploy 會覆寫 queue 設定。
   * **教訓**：每次部署後都要恢復並回讀 `maxConcurrentDispatches=1` 與 `maxDispatchesPerSecond=0.016667`。
+* **直接執行完整部署腳本**：`scripts/deploy-functions.sh` 除了部署和 Queue 更新，也會重複寫入 project-level IAM。
+  * **為什麼不採用**：安全審核不允許在只有部署授權時一併做廣泛且持久的 IAM mutation；而既有 IAM 已在前次部署驗證完成。
+  * **教訓**：既有專案的普通程式更新應只執行 Firebase Functions deploy，再單獨更新／回讀指定 Queue；只有 IAM 確實缺失且獲明確授權時才補 IAM。
 
 ## 關鍵決策 (Key Decisions)
 
@@ -86,12 +90,12 @@
 * **[自動與人工重試都設定明確上限]**：Worker 最多 3 次，使用者對同一內容最多人工重試 2 次，enqueue 失敗不計入人工次數。
   * **原因**：避免永久卡在 `retry_wait`、無限消耗外部 API，同時保留短暫錯誤的恢復能力。
   * **被否決的方案**：無限重試，或每次按下研讀都建立新 job 並重複計算用量。
-* **[安全重試暫留功能分支]**：先完成、測試並 rebase，但沒有在未獲明確發布指令時推送或部署。
-  * **原因**：下一個功能的發布範圍應由使用者確認，不能和已核准的研讀品質修正混在一起。
-  * **被否決的方案**：完成後自動發布至正式環境。
+* **[Review 後以 fast-forward 發布安全重試]**：先補齊自動核准 transaction 的終止狀態，再將兩筆功能 commit 原樣 fast-forward 到 `main`。
+  * **原因**：保留清楚歷史，同時確保所有失敗路徑都有明確上限，部署設定與程式常數一致。
+  * **被否決的方案**：忽略 `auto_approving` 卡死風險，直接部署原功能分支。
 
 ## 交接備忘錄 (Handover Context)
 
-正式站是 `https://allenphant.github.io/stay-with-me/`；Firebase project ID 是 `dating-with-viola`，資料 namespace 是 `stay-with-me`，Functions 位於 `asia-east1`。正式環境目前跑的是 `main` commit `dc901ea`；研讀品質修正與一般網址的手動／自動／冪等 E2E 都已完成，測試資料也已清除。安全重試功能位於本機 `agent/research-job-retry` commit `2f10681`，工作樹在寫入本狀態檔前為乾淨，尚未推送、合併或部署。
+正式站是 `https://allenphant.github.io/stay-with-me/`；Firebase project ID 是 `dating-with-viola`，資料 namespace 是 `stay-with-me`，Functions 位於 `asia-east1`。Functions 正式環境目前部署自 `main` commit `232fef1`；研讀品質修正、一般網址的手動／自動／冪等 E2E，以及有上限的自動／人工重試都已完成並部署。10 個 Functions 更新成功，Queue 已恢復為每分鐘約一筆。測試資料先前已完整清除。
 
-下一個 AI 接手後先閱讀 `/home/cdc/CCdevelopment/stay-with-me/source/CURRENT_STATE.md`，接著 review `git diff main...agent/research-job-retry`；若內容符合預期，就合併、push、部署 Functions，並在部署後立刻恢復與核對 Queue 每分鐘約一筆的限流。若要做正式環境重試 E2E，必須沿用隔離 namespace 加定向 Cloud Task，不可啟動 production Scheduler。雙帳號邀請／共同空間真人實測繼續延後。
+下一個 AI 接手後先閱讀 `/home/cdc/CCdevelopment/stay-with-me/source/CURRENT_STATE.md`。若要做正式環境重試 E2E，必須沿用隔離 namespace 加定向 Cloud Task，驗證 `failed_terminal → manual_retry`、usage 不增加與兩輪上限，不可啟動 production Scheduler；否則直接盤點並補下一個產品功能。雙帳號邀請／共同空間真人實測繼續延後。
