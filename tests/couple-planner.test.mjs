@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
     anniversaryOccurrence, getCalendarEntries, getPlanKind,
-    getUpcomingAnniversaries, normalizeCalendarEvent, parseDateKey
+    getUpcomingAnniversaries, normalizeCalendarEvent, normalizePlannerCard, parseDateKey
 } from '../couple-planner.mjs';
 
 test('date keys reject invalid and non-existent calendar dates', () => {
@@ -67,4 +67,20 @@ test('simple events validate date, time order and optional fields', () => {
     assert.throws(() => normalizeCalendarEvent({ title: '電影', date: '2026-09-20', endTime: '12:00' }), /結束時間/);
     assert.throws(() => normalizeCalendarEvent({ title: '電影', date: '2026-09-20', startTime: '18:00', endTime: '17:00' }), /結束時間/);
     assert.throws(() => normalizeCalendarEvent({ title: '電影', date: '2026-09-20', startTime: '25:00' }), /開始時間/);
+});
+
+test('unified planner cards normalize type, category and optional date', () => {
+    assert.deepEqual(normalizePlannerCard({
+        title: '  去海邊  ', planKind: 'wish', categoryId: 'todos'
+    }), {
+        title: '去海邊', planKind: 'wish', planDate: '', categoryId: 'todos'
+    });
+    assert.deepEqual(normalizePlannerCard({
+        title: '週末約會', planKind: 'date', planDate: '2026-09-20', categoryId: 'dates'
+    }), {
+        title: '週末約會', planKind: 'date', planDate: '2026-09-20', categoryId: 'dates'
+    });
+    assert.throws(() => normalizePlannerCard({ title: '未選類型', categoryId: 'todos' }), /有效的共同計畫類型/);
+    assert.throws(() => normalizePlannerCard({ title: '約會', planKind: 'date', categoryId: 'todos' }), /約會需要有效日期/);
+    assert.throws(() => normalizePlannerCard({ title: '待辦', planKind: 'task' }), /待辦分類/);
 });

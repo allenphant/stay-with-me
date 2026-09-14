@@ -14,6 +14,8 @@ test('planner controls referenced by the app exist exactly once', () => {
         'anniversary-form', 'anniversary-title', 'anniversary-date', 'anniversary-list',
         'add-plan-fields', 'add-plan-kind', 'add-plan-date',
         'edit-plan-fields', 'edit-plan-kind', 'edit-plan-date',
+        'planner-entry-type', 'planner-entry-category', 'planner-entry-plan-fields',
+        'planner-entry-event-fields', 'planner-entry-date-hint', 'planner-entry-open-editor',
         'planner-add-event', 'calendar-event-modal', 'calendar-event-form',
         'calendar-event-title', 'calendar-event-date', 'calendar-event-start',
         'calendar-event-end', 'calendar-event-location', 'calendar-event-notes',
@@ -31,10 +33,12 @@ test('anniversary form uses native required fields and the calendar can scroll o
     assert.match(html, /class="overflow-x-auto pb-2"><div id="planner-calendar"/);
 });
 
-test('standalone event editor has required title/date and dialog semantics', () => {
+test('unified planner editor has required title/date and dialog semantics', () => {
     assert.match(html, /id="calendar-event-modal"[^>]*role="dialog"[^>]*aria-modal="true"/);
     assert.match(html, /id="calendar-event-title"[^>]*\brequired\b/);
     assert.match(html, /id="calendar-event-date"[^>]*\brequired\b/);
+    assert.match(html, /id="planner-entry-type"[\s\S]*value="event"[\s\S]*value="task"[\s\S]*value="wish"[\s\S]*value="date"/);
+    assert.match(html, /id="planner-entry-category"/);
 });
 
 test('month heading opens an accessible, native month picker', () => {
@@ -50,7 +54,16 @@ test('calendar day cells open scheduling while existing entries retain their act
     assert.match(app, /event\.target\.closest\('\.calendar-event-entry'\)/);
     assert.match(app, /event\.target\.closest\('\.planner-entry'\)/);
     assert.match(app, /event\.target\.closest\('\.planner-calendar-day'\)/);
-    assert.match(app, /openCalendarEventModal\(null, dayCell\.dataset\.date\)/);
+    assert.match(app, /openPlannerEntryModal\(null, '', dayCell\.dataset\.date, 'event'\)/);
+});
+
+test('planner routes all plan entry creation and editing through one modal', () => {
+    assert.match(app, /plannerEntryType\.addEventListener\('change', updatePlannerEntryForm\)/);
+    assert.match(app, /openPlannerEntryModal\(item, button\.dataset\.col\)/);
+    assert.match(app, /openPlannerEntryModal\(null, colId, '', 'task'\)/);
+    assert.match(app, /normalizePlannerCard\(/);
+    assert.match(app, /plannerEntryPlanFields\.classList\.toggle\('hidden', !isPlan\)/);
+    assert.match(app, /plannerEntryEventFields\.classList\.toggle\('hidden', !isEvent\)/);
 });
 
 test('shared planner is the first home section and a first-level sidebar destination', () => {

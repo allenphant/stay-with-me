@@ -32,6 +32,19 @@ export function normalizeCalendarEvent(input) {
     return { title, date, startTime, endTime, location, notes };
 }
 
+export function normalizePlannerCard(input) {
+    const title = String(input?.title || '').trim();
+    const planKind = String(input?.planKind || '');
+    const planDate = String(input?.planDate || '');
+    const categoryId = String(input?.categoryId || '').trim();
+    if (!Object.hasOwn(PLAN_KINDS, planKind)) throw new Error('請選擇有效的共同計畫類型');
+    if (!title || title.length > 100) throw new Error('請輸入 100 字以內的計畫名稱');
+    if (!categoryId) throw new Error('請選擇待辦分類');
+    if (planDate && !parseDateKey(planDate)) throw new Error('請選擇有效日期');
+    if (planKind === 'date' && !planDate) throw new Error('約會需要有效日期');
+    return { title, planKind, planDate, categoryId };
+}
+
 export function anniversaryOccurrence(anniversary, year) {
     const original = parseDateKey(anniversary?.date);
     if (!original || year < original.year) return null;

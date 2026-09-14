@@ -5,7 +5,7 @@
         import { createLayerStack, attachKeyboardManager } from './js/keyboard-layers.js';
         import { attachMdShortcuts } from './js/md-shortcuts.js';
         import { groupCardsBySearch } from './card-search.mjs';
-        import { PLAN_KINDS, parseDateKey, dateKey, getPlanKind, getCalendarEntries, getUpcomingAnniversaries, normalizeCalendarEvent } from './couple-planner.mjs';
+        import { PLAN_KINDS, parseDateKey, dateKey, getPlanKind, getCalendarEntries, getUpcomingAnniversaries, normalizeCalendarEvent, normalizePlannerCard } from './couple-planner.mjs';
         import {
             buildTagUsageCounts,
             groupCardsByTagFilter,
@@ -117,7 +117,7 @@
         let unsubscribeAnniversaries = null;
         let currentCalendarEvents = [];
         let unsubscribeCalendarEvents = null;
-        let activeCalendarEventId = null;
+        let activePlannerEntry = null;
         let plannerMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
         const selectedTagFilterIds = new Set();
         const selectedResearchBackfillKeys = new Set();
@@ -465,127 +465,257 @@
             const calendarEventButton = event.target.closest('.calendar-event-entry');
             if (calendarEventButton) {
                 const item = currentCalendarEvents.find(value => value.id === calendarEventButton.dataset.id);
-                if (item) openCalendarEventModal(item);
+                if (item) openPlannerEntryModal(item, 'calendarEvents');
                 return;
             }
             const dayButton = event.target.closest('.planner-day');
-            if (dayButton) { openCalendarEventModal(null, dayButton.dataset.date); return; }
+            if (dayButton) { openPlannerEntryModal(null, '', dayButton.dataset.date, 'event'); return; }
             const button = event.target.closest('.planner-entry');
             if (button) {
                 const item = currentItemsByCollection.get(button.dataset.col)?.find(value => value.id === button.dataset.id);
-                if (item) openEditor(item.id, item.text, button.dataset.col);
+                if (item) openPlannerEntryModal(item, button.dataset.col);
                 return;
             }
             const dayCell = event.target.closest('.planner-calendar-day');
-            if (dayCell) openCalendarEventModal(null, dayCell.dataset.date);
+            if (dayCell) openPlannerEntryModal(null, '', dayCell.dataset.date, 'event');
         }
         document.getElementById('planner-calendar').addEventListener('click', openPlannerEntry);
         document.getElementById('planner-wishes').addEventListener('click', openPlannerEntry);
         document.getElementById('planner-add-event').addEventListener('click', () => {
             const today = new Date();
             const visibleMonth = plannerMonth.getMonth() === today.getMonth() && plannerMonth.getFullYear() === today.getFullYear();
-            openCalendarEventModal(null, visibleMonth
+            openPlannerEntryModal(null, '', visibleMonth
                 ? dateKey(today.getFullYear(), today.getMonth() + 1, today.getDate())
-                : dateKey(plannerMonth.getFullYear(), plannerMonth.getMonth() + 1, 1));
+                : dateKey(plannerMonth.getFullYear(), plannerMonth.getMonth() + 1, 1), 'event');
         });
 
         const calendarEventModal = document.getElementById('calendar-event-modal');
         const calendarEventForm = document.getElementById('calendar-event-form');
-        let calendarEventPreviousFocus = null;
-        let calendarEventBusy = false;
+        const plannerEntryType = document.getElementById('planner-entry-type');
+        const plannerEntryCategory = document.getElementById('planner-entry-category');
+        const plannerEntryPlanFields = document.getElementById('planner-entry-plan-fields');
+        const plannerEntryEventFields = document.getElementById('planner-entry-event-fields');
+        const plannerEntryDate = document.getElementById('calendar-event-date');
+        let plannerEntryPreviousFocus = null;
+        let plannerEntryBusy = false;
 
-        function showCalendarEventError(message) {
+        function showPlannerEntryError(message) {
             const error = document.getElementById('calendar-event-error');
             error.textContent = message;
             error.classList.toggle('hidden', !message);
         }
 
-        function openCalendarEventModal(item = null, initialDate = '') {
+        function populatePlannerEntryCategories(selectedId = '') {
+            const todoCategories = currentCategories.filter(category => category.type === 'todo');
+            plannerEntryCategory.innerHTML = '';
+            if (!todoCategories.length) {
+                const option = document.createElement('option');
+                option.value = '';
+                option.textContent = '尚無可用的待辦分類';
+                plannerEntryCategory.appendChild(option);
+                plannerEntryCategory.disabled = true;
+                return;
+            }
+            todoCategories.forEach(category => {
+                const option = document.createElement('option');
+                option.value = category.id;
+                option.textContent = category.name || category.id;
+                plannerEntryCategory.appendChild(option);
+            });
+            plannerEntryCategory.disabled = false;
+            plannerEntryCategory.value = todoCategories.some(category => category.id === selectedId)
+                ? selectedId : todoCategories[0].id;
+        }
+
+        function setPlannerEntryTypeOptions(storageType, selectedKind) {
+            const kinds = storageType === 'event'
+                ? ['event']
+                : storageType === 'plan'
+                    ? ['task', 'wish', 'date']
+                    : ['event', 'task', 'wish', 'date'];
+            plannerEntryType.innerHTML = kinds.map(kind => `<option value="${kind}">${kind === 'event' ? '行程' : escapeHtml(PLAN_KINDS[kind])}</option>`).join('');
+            plannerEntryType.value = kinds.includes(selectedKind) ? selectedKind : kinds[0];
+        }
+
+        function updatePlannerEntryForm() {
+            const kind = plannerEntryType.value;
+            const isEvent = kind === 'event';
+            const isPlan = !isEvent;
+            const isDate = kind === 'date';
+            plannerEntryPlanFields.classList.toggle('hidden', !isPlan);
+            plannerEntryEventFields.classList.toggle('hidden', !isEvent);
+            plannerEntryCategory.required = isPlan;
+            plannerEntryDate.required = isEvent || isDate;
+            document.getElementById('planner-entry-date-hint').textContent = plannerEntryDate.required ? '（必填）' : '（可不填）';
+            document.getElementById('calendar-event-title').placeholder = isEvent ? '例如：週末看電影' : '例如：一起完成這件事';
+            document.getElementById('calendar-event-modal-title').textContent = activePlannerEntry
+                ? (isEvent ? '編輯行程' : '編輯共同計畫')
+                : '新增共同計畫';
+            document.getElementById('planner-entry-intro').textContent = isEvent
+                ? '記下時間、地點與備註，讓下一次見面有清楚安排。'
+                : '把一起要做的事、想去的地方或約會放在同一份計畫裡。';
+            document.getElementById('planner-entry-mode-badge').textContent = activePlannerEntry ? '編輯中' : '共同入口';
+            document.getElementById('calendar-event-delete').textContent = isEvent ? '刪除行程' : '刪除計畫';
+            document.getElementById('calendar-event-save').textContent = isEvent ? '儲存行程' : '儲存計畫';
+            document.getElementById('planner-entry-open-editor').classList.toggle('hidden', !(activePlannerEntry?.storageType === 'plan' && isPlan));
+        }
+
+        function buildPlannerCardData(fields) {
+            const data = {
+                text: fields.title,
+                cardSearchText: fields.title.toLocaleLowerCase('zh-Hant'),
+                planKind: fields.planKind
+            };
+            if (fields.planDate) data.planDate = fields.planDate;
+            return data;
+        }
+
+        async function savePlannerCard(fields) {
+            const targetCollection = fields.categoryId;
+            const data = buildPlannerCardData(fields);
+            const activePlan = activePlannerEntry?.storageType === 'plan' ? activePlannerEntry : null;
+            if (!activePlan) {
+                const docRef = await addDoc(collection(db, 'artifacts', appId, 'users', getActiveSpaceId(), targetCollection), {
+                    ...data, createdAt: Date.now(), order: Date.now()
+                });
+                return { wasEditing: false, id: docRef.id };
+            }
+
+            const sourceRef = doc(db, 'artifacts', appId, 'users', getActiveSpaceId(), activePlan.collectionId, activePlan.id);
+            const sourceSnap = await getDoc(sourceRef);
+            if (!sourceSnap.exists()) throw new Error('找不到這筆共同計畫，請重新整理後再試');
+            const nextData = { ...sourceSnap.data(), ...data };
+            if (!fields.planDate) delete nextData.planDate;
+            if (targetCollection === activePlan.collectionId) {
+                await setDoc(sourceRef, nextData);
+            } else {
+                await setDoc(doc(db, 'artifacts', appId, 'users', getActiveSpaceId(), targetCollection, activePlan.id), nextData);
+                await copyCardDetails(activePlan.collectionId, targetCollection, activePlan.id, activePlan.id);
+                await deleteDoc(sourceRef);
+            }
+            return { wasEditing: true, moved: targetCollection !== activePlan.collectionId, id: activePlan.id };
+        }
+
+        function openPlannerEntryModal(item = null, collectionId = '', initialDate = '', defaultKind = 'event') {
             if (!currentUser) { showToast('請先登入', 'fas fa-right-to-bracket'); return; }
-            calendarEventPreviousFocus = document.activeElement;
-            activeCalendarEventId = item?.id || null;
+            plannerEntryPreviousFocus = document.activeElement;
+            const storageType = item ? (collectionId === 'calendarEvents' ? 'event' : 'plan') : null;
+            activePlannerEntry = item
+                ? { id: item.id, item, storageType, collectionId: storageType === 'event' ? 'calendarEvents' : collectionId }
+                : null;
             calendarEventForm.reset();
-            document.getElementById('calendar-event-modal-title').textContent = item ? '編輯行程' : '新增行程';
-            document.getElementById('calendar-event-title').value = item?.title || '';
-            document.getElementById('calendar-event-date').value = item?.date || initialDate;
+            const selectedKind = item
+                ? storageType === 'event' ? 'event' : getPlanKind(item)
+                : defaultKind;
+            setPlannerEntryTypeOptions(storageType, selectedKind);
+            populatePlannerEntryCategories(storageType === 'plan' ? collectionId : collectionId);
+            document.getElementById('calendar-event-title').value = item?.title || item?.text || '';
+            plannerEntryDate.value = item?.date || item?.planDate || initialDate;
             document.getElementById('calendar-event-start').value = item?.startTime || '';
             document.getElementById('calendar-event-end').value = item?.endTime || '';
             document.getElementById('calendar-event-location').value = item?.location || '';
             document.getElementById('calendar-event-notes').value = item?.notes || '';
             document.getElementById('calendar-event-delete').classList.toggle('hidden', !item);
-            showCalendarEventError('');
+            showPlannerEntryError('');
+            updatePlannerEntryForm();
             calendarEventModal.classList.remove('hidden');
-            keyLayers.push({ name: 'calendar-event', keys: modalKeys(closeCalendarEventModal) });
+            keyLayers.push({ name: 'calendar-event', keys: modalKeys(closePlannerEntryModal) });
             document.getElementById('calendar-event-title').focus();
         }
 
-        function closeCalendarEventModal() {
-            if (calendarEventBusy) return;
+        function closePlannerEntryModal() {
+            if (plannerEntryBusy) return;
             calendarEventModal.classList.add('hidden');
             keyLayers.pop('calendar-event');
-            activeCalendarEventId = null;
-            calendarEventPreviousFocus?.focus?.();
+            activePlannerEntry = null;
+            plannerEntryPreviousFocus?.focus?.();
         }
 
         calendarEventModal.addEventListener('keydown', event => trapDialogTab(calendarEventModal, event));
         calendarEventModal.addEventListener('click', event => {
-            if (event.target === calendarEventModal) closeCalendarEventModal();
+            if (event.target === calendarEventModal) closePlannerEntryModal();
         });
-        document.getElementById('calendar-event-cancel').addEventListener('click', closeCalendarEventModal);
+        plannerEntryType.addEventListener('change', updatePlannerEntryForm);
+        document.getElementById('calendar-event-cancel').addEventListener('click', closePlannerEntryModal);
+        document.getElementById('planner-entry-open-editor').addEventListener('click', () => {
+            if (!activePlannerEntry || activePlannerEntry.storageType !== 'plan') return;
+            const { id, item, collectionId } = activePlannerEntry;
+            closePlannerEntryModal();
+            void openEditor(id, item.text, collectionId);
+        });
         calendarEventForm.addEventListener('submit', async event => {
             event.preventDefault();
-            if (!currentUser || calendarEventBusy) return;
+            if (!currentUser || plannerEntryBusy) return;
+            const kind = plannerEntryType.value;
             let fields;
             try {
-                fields = normalizeCalendarEvent({
-                    title: document.getElementById('calendar-event-title').value,
-                    date: document.getElementById('calendar-event-date').value,
-                    startTime: document.getElementById('calendar-event-start').value,
-                    endTime: document.getElementById('calendar-event-end').value,
-                    location: document.getElementById('calendar-event-location').value,
-                    notes: document.getElementById('calendar-event-notes').value
-                });
-            } catch (error) { showCalendarEventError(error.message); return; }
-            const button = document.getElementById('calendar-event-save');
-            const deleteButton = document.getElementById('calendar-event-delete');
-            calendarEventBusy = true;
-            button.disabled = true;
-            deleteButton.disabled = true;
-            showCalendarEventError('');
-            try {
-                const spaceId = getActiveSpaceId();
-                if (activeCalendarEventId) {
-                    await updateDoc(doc(db, 'artifacts', appId, 'users', spaceId, 'calendarEvents', activeCalendarEventId), fields);
+                if (kind === 'event') {
+                    fields = normalizeCalendarEvent({
+                        title: document.getElementById('calendar-event-title').value,
+                        date: plannerEntryDate.value,
+                        startTime: document.getElementById('calendar-event-start').value,
+                        endTime: document.getElementById('calendar-event-end').value,
+                        location: document.getElementById('calendar-event-location').value,
+                        notes: document.getElementById('calendar-event-notes').value
+                    });
                 } else {
-                    await addDoc(collection(db, 'artifacts', appId, 'users', spaceId, 'calendarEvents'), {
-                        ...fields, createdAt: Date.now(), createdByUid: currentUser.uid
+                    fields = normalizePlannerCard({
+                        title: document.getElementById('calendar-event-title').value,
+                        planKind: kind,
+                        planDate: plannerEntryDate.value,
+                        categoryId: plannerEntryCategory.value
                     });
                 }
-                const wasEditing = Boolean(activeCalendarEventId);
-                calendarEventBusy = false;
-                closeCalendarEventModal();
-                showToast(wasEditing ? '行程已更新' : '行程已排入日曆', 'fas fa-calendar-days');
+            } catch (error) { showPlannerEntryError(error.message); return; }
+            const button = document.getElementById('calendar-event-save');
+            const deleteButton = document.getElementById('calendar-event-delete');
+            plannerEntryBusy = true;
+            button.disabled = true;
+            deleteButton.disabled = true;
+            showPlannerEntryError('');
+            try {
+                const spaceId = getActiveSpaceId();
+                const wasEditing = Boolean(activePlannerEntry);
+                let result;
+                if (kind === 'event') {
+                    if (activePlannerEntry?.storageType === 'event') {
+                        await updateDoc(doc(db, 'artifacts', appId, 'users', spaceId, 'calendarEvents', activePlannerEntry.id), fields);
+                    } else {
+                        await addDoc(collection(db, 'artifacts', appId, 'users', spaceId, 'calendarEvents'), {
+                            ...fields, createdAt: Date.now(), createdByUid: currentUser.uid
+                        });
+                    }
+                    result = { wasEditing };
+                } else {
+                    result = await savePlannerCard(fields);
+                }
+                plannerEntryBusy = false;
+                closePlannerEntryModal();
+                if (kind === 'event') showToast(result.wasEditing ? '行程已更新' : '行程已排入日曆', 'fas fa-calendar-days');
+                else showToast(result.wasEditing ? (result.moved ? '共同計畫已更新並移動分類' : '共同計畫已更新') : '共同計畫已建立', 'fas fa-list-check');
             } catch (error) {
-                console.error('儲存行程失敗', error);
-                showCalendarEventError('儲存行程失敗，請重試。');
-            } finally { calendarEventBusy = false; button.disabled = false; deleteButton.disabled = false; }
+                console.error('儲存共同計畫失敗', error);
+                showPlannerEntryError('儲存失敗，請重試。');
+            } finally { plannerEntryBusy = false; button.disabled = false; deleteButton.disabled = false; }
         });
         document.getElementById('calendar-event-delete').addEventListener('click', async () => {
-            if (!currentUser || calendarEventBusy || !activeCalendarEventId || !confirm('刪除這筆行程？')) return;
+            if (!currentUser || plannerEntryBusy || !activePlannerEntry || !confirm(`刪除這筆${activePlannerEntry.storageType === 'event' ? '行程' : '共同計畫'}？`)) return;
             const button = document.getElementById('calendar-event-delete');
             const saveButton = document.getElementById('calendar-event-save');
-            calendarEventBusy = true;
+            const deletedStorageType = activePlannerEntry.storageType;
+            plannerEntryBusy = true;
             button.disabled = true;
             saveButton.disabled = true;
             try {
-                await deleteDoc(doc(db, 'artifacts', appId, 'users', getActiveSpaceId(), 'calendarEvents', activeCalendarEventId));
-                calendarEventBusy = false;
-                closeCalendarEventModal();
-                showToast('行程已刪除', 'fas fa-trash-alt');
+                const collectionName = activePlannerEntry.storageType === 'event' ? 'calendarEvents' : activePlannerEntry.collectionId;
+                await deleteDoc(doc(db, 'artifacts', appId, 'users', getActiveSpaceId(), collectionName, activePlannerEntry.id));
+                plannerEntryBusy = false;
+                closePlannerEntryModal();
+                showToast(deletedStorageType === 'event' ? '行程已刪除' : '共同計畫已刪除', 'fas fa-trash-alt');
             } catch (error) {
-                console.error('刪除行程失敗', error);
-                showCalendarEventError('刪除行程失敗，請重試。');
-            } finally { calendarEventBusy = false; button.disabled = false; saveButton.disabled = false; }
+                console.error('刪除共同計畫失敗', error);
+                showPlannerEntryError('刪除失敗，請重試。');
+            } finally { plannerEntryBusy = false; button.disabled = false; saveButton.disabled = false; }
         });
         document.getElementById('anniversary-list').addEventListener('click', async event => {
             const button = event.target.closest('.delete-anniversary');
@@ -2576,7 +2706,11 @@
                     addBtn.addEventListener('click', () => {
                         const colId = addBtn.getAttribute('data-col');
                         const colName = addBtn.getAttribute('data-name');
-                        openAddCardModal(colId, colName);
+                        if (cat.type === 'todo') {
+                            openPlannerEntryModal(null, colId, '', 'task');
+                        } else {
+                            openAddCardModal(colId, colName);
+                        }
                     });
                 }
             });
@@ -3084,8 +3218,12 @@
                 showMoveModal(item, collectionName);
             });
             li.querySelector('.edit-btn')?.addEventListener('click', () => {
-                pendingEditTarget = { id: item.id, col: collectionName }; editInput.value = item.text;
                 const isTodo = currentCategories.some(category => category.id === collectionName && category.type === 'todo');
+                if (isTodo) {
+                    openPlannerEntryModal(item, collectionName);
+                    return;
+                }
+                pendingEditTarget = { id: item.id, col: collectionName }; editInput.value = item.text;
                 document.getElementById('edit-plan-fields').classList.toggle('hidden', !isTodo);
                 document.getElementById('edit-plan-fields').classList.toggle('grid', isTodo);
                 document.getElementById('edit-plan-kind').value = getPlanKind(item);
