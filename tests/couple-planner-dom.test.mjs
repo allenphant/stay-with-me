@@ -52,3 +52,16 @@ test('calendar day cells open scheduling while existing entries retain their act
     assert.match(app, /event\.target\.closest\('\.planner-calendar-day'\)/);
     assert.match(app, /openCalendarEventModal\(null, dayCell\.dataset\.date\)/);
 });
+
+test('shared planner is the first home section and a first-level sidebar destination', () => {
+    const headerEnd = html.indexOf('</header>');
+    const plannerStart = html.indexOf('<section id="couple-planner"');
+    const captureStart = html.indexOf('id="add-form"');
+    const inboxStart = html.indexOf('data-name="收件匣"');
+    assert.ok(headerEnd < plannerStart, 'planner should follow the page header');
+    assert.ok(plannerStart < captureStart, 'planner should precede the capture input');
+    assert.ok(plannerStart < inboxStart, 'planner should precede the inbox');
+    assert.match(app, /createSidebarLink\('couple-planner', 'fas fa-calendar-days', '共同計畫'\)/);
+    assert.match(app, /targetId === 'couple-planner'/);
+    assert.match(app, /querySelectorAll\('\.category-wrapper, #couple-planner'\)/);
+});
