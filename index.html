@@ -317,9 +317,10 @@
             <div class="mb-4 flex flex-wrap items-start justify-between gap-3">
                 <div>
                     <h2 id="couple-planner-title" class="text-lg font-bold text-slate-800"><i class="fas fa-calendar-days mr-2 text-rose-500"></i>共同計畫</h2>
-                    <p class="mt-1 text-xs text-slate-500">在待辦分類新增願望或約會、排定日期，就會出現在這裡。</p>
+                    <p class="mt-1 text-xs text-slate-500">行程可直接排在日曆；願望與約會卡片有日期時也會顯示。</p>
                 </div>
                 <div class="flex items-center gap-2">
+                    <button id="planner-add-event" type="button" class="rounded-lg bg-indigo-600 px-3 py-2 text-xs font-bold text-white hover:bg-indigo-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:cursor-not-allowed disabled:opacity-50" aria-haspopup="dialog" aria-controls="calendar-event-modal"><i class="fas fa-plus mr-1" aria-hidden="true"></i>排行程</button>
                     <button id="planner-prev-month" type="button" class="rounded-lg border border-slate-200 px-3 py-1.5 text-sm hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400" aria-label="上個月">‹</button>
                     <span id="planner-month-label" class="min-w-24 text-center text-sm font-bold text-slate-700"></span>
                     <button id="planner-next-month" type="button" class="rounded-lg border border-slate-200 px-3 py-1.5 text-sm hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400" aria-label="下個月">›</button>
@@ -348,6 +349,41 @@
         </div>
         </div><!-- end #main-app-container -->
     </div><!-- end #page-wrapper -->
+
+    <!-- 純行程編輯：不建立待辦卡片，也沒有完成狀態 -->
+    <div id="calendar-event-modal" class="hidden fixed inset-0 z-[90] flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="calendar-event-modal-title">
+        <form id="calendar-event-form" class="flex max-h-[90vh] w-full max-w-md flex-col gap-3 overflow-y-auto rounded-2xl bg-white p-5 shadow-xl md:p-6">
+            <h2 id="calendar-event-modal-title" class="text-lg font-bold text-slate-800">新增行程</h2>
+            <label class="text-sm font-bold text-slate-700">行程名稱
+                <input id="calendar-event-title" type="text" maxlength="100" required placeholder="例如：週末看電影" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100">
+            </label>
+            <label class="text-sm font-bold text-slate-700">日期
+                <input id="calendar-event-date" type="date" required class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100">
+            </label>
+            <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <label class="text-sm font-bold text-slate-700">開始時間（可不填）
+                    <input id="calendar-event-start" type="time" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100">
+                </label>
+                <label class="text-sm font-bold text-slate-700">結束時間（可不填）
+                    <input id="calendar-event-end" type="time" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100">
+                </label>
+            </div>
+            <label class="text-sm font-bold text-slate-700">地點（可不填）
+                <input id="calendar-event-location" type="text" maxlength="120" placeholder="例如：台北車站" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100">
+            </label>
+            <label class="text-sm font-bold text-slate-700">備註（可不填）
+                <textarea id="calendar-event-notes" maxlength="1000" rows="3" class="mt-1 w-full resize-y rounded-lg border border-slate-300 px-3 py-2.5 text-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"></textarea>
+            </label>
+            <p id="calendar-event-error" class="hidden text-sm text-rose-700" role="alert"></p>
+            <div class="mt-1 flex flex-wrap justify-between gap-2">
+                <button id="calendar-event-delete" type="button" class="hidden rounded-lg px-3 py-2 text-sm font-bold text-rose-700 hover:bg-rose-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400">刪除行程</button>
+                <div class="ml-auto flex gap-2">
+                    <button id="calendar-event-cancel" type="button" class="rounded-lg px-3 py-2 text-sm text-slate-600 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400">取消</button>
+                    <button id="calendar-event-save" type="submit" class="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-bold text-white hover:bg-indigo-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">儲存行程</button>
+                </div>
+            </div>
+        </form>
+    </div>
 
     <!-- Modals -->
     <div id="global-search-modal" class="hidden fixed inset-0 z-[85] bg-slate-900/50 backdrop-blur-sm md:p-4" role="dialog" aria-modal="true" aria-labelledby="global-search-title">
