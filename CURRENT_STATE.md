@@ -1,7 +1,28 @@
-# 雲端研讀安全重試已完成 review 並部署上線
+# 純行程功能已推送 PR #5，尚未發布
 
-> **更新時間**：2026-08-13 08:44
+> **更新時間**：2026-09-14
 > **專案核心**：以 Vanilla JS、Firebase Authentication／Firestore／Functions 與 GitHub Pages 打造的雙人共編生活空間。
+
+## 最新狀態（2026-09-14：純行程）
+
+* 使用者已在正式站驗收紀念日成功，並要求「單純排行程」。本版採快速概念範圍：在共享月曆直接新增／編輯／刪除單日行程，欄位是標題、日期、可選開始／結束時間、地點、備註；不建立待辦卡片、不需完成勾選。點月曆日期可預填日期；既有卡片和紀念日仍可同時顯示。
+* 行程存於目前空間 `artifacts/{appId}/users/{spaceId}/calendarEvents/{id}`，沿用既有空間成員 Firestore rules；本次未更動 rules 或 Functions。無重複行程、跨日行程、關閉 App 後提醒或外部行事曆同步，這些留待後續需求確認。
+* `couple-planner.mjs` 新增行程欄位驗證和月曆投影；`app.js` 管理 Firestore 即時監聽與表單 CRUD；`index.html` 新增獨立行程對話框；對應測試已擴充。`npm test` 19 個測試檔通過，`node --check` 和 `git diff --check` 通過。瀏覽器互動回歸仍受本機環境限制，需部署後由使用者驗收。
+* 工作分支：`feat/simple-calendar-events`，從已合併的 `origin/main` (`8070bed`) 建立。程式提交 `b1bd216` 已推送，建立 [PR #5](https://github.com/allenphant/stay-with-me/pull/5)；尚未合併或部署，正式站仍是紀念日第一階段版本。原有 `CLAUDE.md` 修改和 untracked `AGENTS.md` 為使用者變更，未納入功能 commit。
+* 後續功能仍未實作：每日共同問答、代幣與天竺鼠、AI 每週回顧。
+
+## 上次狀態（2026-09-14：共同計畫第一階段）
+
+* 已在本機加入共同計畫第一階段：待辦類型（待辦／願望／約會）、可選日期、共享月曆、未排期願望入口，以及每年重複的紀念日與 App 內未來 30 天提示。舊待辦未新增欄位時仍視為一般待辦；願望改成約會只更新原卡片，不複製資料。
+* 主要檔案：`app.js`、`index.html`、`couple-planner.mjs`、`tests/couple-planner.test.mjs`、`tests/couple-planner-dom.test.mjs`。紀念日存在目前空間的 `anniversaries` collection；待辦仍沿用各 todo 類型分類的原 collection。沒有修改 Firestore rules 或部署雲端。
+* 驗證：`node --check app.js`、`node --check couple-planner.mjs`、`npm test`（19 個測試檔全過）、`git diff --check`。瀏覽器互動及雙帳號真人驗證尚未執行；後者依使用者決定延後。使用 `ui-styling` 原則補了窄螢幕日曆橫向捲動、表單標籤、對話框語意與焦點移動。
+* 本機瀏覽器回歸受環境限制：sandbox 不允許開本機 HTTP socket，系統 Chromium 的 snap-confine 也無法啟動。因此尚未把畫面互動宣稱為已驗證。
+* 下一步：使用者可在 `https://allenphant.github.io/stay-with-me/` 驗收互動流程（新增願望→編輯排期→月曆顯示→紀念日新增／刪除）。確認後再處理每日共同問答、代幣／天竺鼠、AI 每週回顧。關閉 App 後的推播與外部日曆同步仍屬後期範圍。
+* 功能程式與測試先在 `feat/couple-planner-mvp` 提交為 `da2af37`，推送並建立 [PR #4](https://github.com/allenphant/stay-with-me/pull/4)。使用者明確同意後已 squash 合併；`main` merge commit 為 `8070bed6c77d6368709db73a36d514de8a119bee`。GitHub Pages build API 顯示 `built`，且正式站的 `index.html`、`app.js`、`couple-planner.mjs` SHA-256 與本機合併版本逐一相符。
+* 第一次合併嘗試曾因缺少正式站發布的明確授權而被安全審核拒絕；使用者之後回覆「合併吧」，再次確認 PR 與 base/head 後才完成發布。
+* 工作樹原有使用者變更：`CLAUDE.md` 已修改、`AGENTS.md` 為 untracked；本次未碰這兩檔，也沒有混入功能 commit。
+
+## 上次交接：雲端研讀安全重試（2026-08-13）
 
 ## 本次對話目標
 
