@@ -3,8 +3,11 @@
 > **更新時間**：2026-09-14
 > **專案核心**：以 Vanilla JS、Firebase Authentication／Firestore／Functions 與 GitHub Pages 打造的雙人共編生活空間。
 
-## 最新狀態（2026-09-14：日曆操作與小日記構想）
+## 最新狀態（2026-09-14：共同計畫成為首頁主軸）
 
+* 本次依 UI critique 的第一優先調整首頁閱讀順序：共同計畫現在位於頁面標題後的第一個核心區塊，收件匣與快速新增輸入框保留在後方；側欄第一項加入「共同計畫」，並讓 IntersectionObserver 在滾動時正確高亮 Planner。
+* 新增 `TODO.md` 作為產品待辦的主要維護文件，分開目前處理、產品功能、品質可及性與已完成項目；`CURRENT_STATE.md` 繼續只記錄交接快照。
+* 本次程式／文件已通過 `npm test`（20 個測試檔全過）、`node --check app.js`、`git diff --check`；impeccable layout detector 在 parser 降級模式下回報 0 個 layout finding。正式站真人驗收仍待部署後確認首頁順序、側欄跳轉與行程新增。
 * 本次新增日曆互動：整個日期格的空白處可開啟預填該日期的新增行程；日期數字仍是可鍵盤操作的按鈕，既有行程／待辦卡片仍先開啟自己的編輯器。中央年月改成按鈕，開啟原生年月選擇器快速跳轉，並支援取消、Escape 與點擊外部關閉。
 * 功能已經 [PR #7](https://github.com/allenphant/stay-with-me/pull/7) squash 合併到 `main`（`336033fe0e7a5edaa72a3b69bc1d5ef126a7d060`）。`npm test` 19/19 通過，`node --check app.js`、`git diff --check` 通過；GitHub Pages build 顯示 `built`，正式站 `index.html`、`app.js` 雜湊與合併版本相同。真人瀏覽器互動仍待使用者在正式站驗收。
 * 使用者另提出每日小日記構想：每天可寫一則，另一人花代幣解鎖，價格與日記字數成正比。本次僅納入後續功能規劃，未建立日記資料或代幣扣款。實作前須先決定字數計價公式（最低價／上限、編輯後價格是否變動）及代幣為個人錢包或共享錢包；鎖定內容須由 Firestore rules 與可信任的後端扣款／解鎖流程保護，不能沿用目前成員可讀全部空間子集合的規則再只用 UI 隱藏。

@@ -248,6 +248,48 @@
             </div>
         </header>
 
+        <!-- 共同計畫：首頁第一個核心區塊；待辦卡片與日曆共用同一份資料 -->
+        <section id="couple-planner" class="mb-8 scroll-mt-6 rounded-2xl border border-rose-100 bg-white p-4 shadow-sm md:p-6" aria-labelledby="couple-planner-title">
+            <div class="mb-4 flex flex-wrap items-start justify-between gap-3">
+                <div>
+                    <h2 id="couple-planner-title" class="text-lg font-bold text-slate-800"><i class="fas fa-calendar-days mr-2 text-rose-500"></i>共同計畫</h2>
+                    <p class="mt-1 text-xs text-slate-500">先看今天的安排，再把下一件一起做的事排進日曆。</p>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button id="planner-add-event" type="button" class="rounded-lg bg-indigo-600 px-3 py-2 text-xs font-bold text-white hover:bg-indigo-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:cursor-not-allowed disabled:opacity-50" aria-haspopup="dialog" aria-controls="calendar-event-modal"><i class="fas fa-plus mr-1" aria-hidden="true"></i>排行程</button>
+                    <button id="planner-prev-month" type="button" class="rounded-lg border border-slate-200 px-3 py-1.5 text-sm hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400" aria-label="上個月">‹</button>
+                    <div id="planner-month-jump-container" class="relative">
+                        <button id="planner-month-toggle" type="button" class="min-w-24 rounded-lg px-2 py-1.5 text-center text-sm font-bold text-slate-700 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400" aria-label="選擇年月快速跳轉" aria-expanded="false" aria-controls="planner-month-jump"><span id="planner-month-label"></span></button>
+                        <form id="planner-month-jump" class="absolute left-1/2 top-full z-20 mt-2 w-56 -translate-x-1/2 rounded-xl border border-slate-200 bg-white p-3 shadow-lg" hidden>
+                            <label for="planner-month-input" class="mb-2 block text-xs font-bold text-slate-600">跳到哪個年月？</label>
+                            <input id="planner-month-input" type="month" min="0100-01" max="9999-12" required class="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400">
+                            <div class="mt-3 flex justify-end gap-2">
+                                <button id="planner-month-cancel" type="button" class="rounded-lg px-3 py-1.5 text-xs font-bold text-slate-600 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400">取消</button>
+                                <button type="submit" class="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-indigo-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">跳轉</button>
+                            </div>
+                        </form>
+                    </div>
+                    <button id="planner-next-month" type="button" class="rounded-lg border border-slate-200 px-3 py-1.5 text-sm hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400" aria-label="下個月">›</button>
+                    <button id="planner-today" type="button" class="rounded-lg bg-rose-50 px-3 py-1.5 text-xs font-bold text-rose-700 hover:bg-rose-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400">今天</button>
+                </div>
+            </div>
+            <div id="planner-upcoming" class="mb-4 rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-800" aria-live="polite"></div>
+            <div class="overflow-x-auto pb-2"><div id="planner-calendar" class="grid min-w-[560px] grid-cols-7 gap-1" aria-label="共享日曆"></div></div>
+            <div class="mt-4 border-t border-slate-100 pt-3">
+                <h3 class="mb-2 text-sm font-bold text-slate-700">還沒排時間的願望</h3>
+                <div id="planner-wishes" class="flex flex-wrap gap-2 text-sm"></div>
+            </div>
+            <div class="mt-5 border-t border-slate-100 pt-4">
+                <h3 class="mb-2 text-sm font-bold text-slate-700">紀念日</h3>
+                <form id="anniversary-form" class="flex flex-wrap gap-2">
+                    <input id="anniversary-title" type="text" maxlength="100" required placeholder="例如：在一起的日子" aria-label="紀念日名稱" class="min-w-40 flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm">
+                    <input id="anniversary-date" type="date" required aria-label="紀念日日期" class="rounded-lg border border-slate-200 px-3 py-2 text-sm">
+                    <button type="submit" class="rounded-lg bg-rose-600 px-4 py-2 text-sm font-bold text-white hover:bg-rose-700">新增紀念日</button>
+                </form>
+                <div id="anniversary-list" class="mt-3 flex flex-wrap gap-2 text-xs text-slate-600"></div>
+            </div>
+        </section>
+
         <!-- 無延遲新增輸入框 (加入圖片預覽區) -->
         <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-2 mb-8 flex flex-col sticky top-4 z-40 group focus-within:ring-2 focus-within:ring-indigo-200 transition-all">
             <div class="flex flex-col md:flex-row gap-2">
@@ -311,48 +353,6 @@
                 <li class="bg-white/80 p-4 rounded-xl border border-indigo-100 text-slate-500 text-sm text-center ignore-drag backdrop-blur-sm">載入中...</li>
             </ul>
         </div>
-
-        <!-- 共同計畫：待辦卡片與日曆共用同一份資料 -->
-        <section id="couple-planner" class="mb-8 rounded-2xl border border-rose-100 bg-white p-4 shadow-sm md:p-6" aria-labelledby="couple-planner-title">
-            <div class="mb-4 flex flex-wrap items-start justify-between gap-3">
-                <div>
-                    <h2 id="couple-planner-title" class="text-lg font-bold text-slate-800"><i class="fas fa-calendar-days mr-2 text-rose-500"></i>共同計畫</h2>
-                    <p class="mt-1 text-xs text-slate-500">行程可直接排在日曆；願望與約會卡片有日期時也會顯示。</p>
-                </div>
-                <div class="flex items-center gap-2">
-                    <button id="planner-add-event" type="button" class="rounded-lg bg-indigo-600 px-3 py-2 text-xs font-bold text-white hover:bg-indigo-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:cursor-not-allowed disabled:opacity-50" aria-haspopup="dialog" aria-controls="calendar-event-modal"><i class="fas fa-plus mr-1" aria-hidden="true"></i>排行程</button>
-                    <button id="planner-prev-month" type="button" class="rounded-lg border border-slate-200 px-3 py-1.5 text-sm hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400" aria-label="上個月">‹</button>
-                    <div id="planner-month-jump-container" class="relative">
-                        <button id="planner-month-toggle" type="button" class="min-w-24 rounded-lg px-2 py-1.5 text-center text-sm font-bold text-slate-700 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400" aria-label="選擇年月快速跳轉" aria-expanded="false" aria-controls="planner-month-jump"><span id="planner-month-label"></span></button>
-                        <form id="planner-month-jump" class="absolute left-1/2 top-full z-20 mt-2 w-56 -translate-x-1/2 rounded-xl border border-slate-200 bg-white p-3 shadow-lg" hidden>
-                            <label for="planner-month-input" class="mb-2 block text-xs font-bold text-slate-600">跳到哪個年月？</label>
-                            <input id="planner-month-input" type="month" min="0100-01" max="9999-12" required class="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400">
-                            <div class="mt-3 flex justify-end gap-2">
-                                <button id="planner-month-cancel" type="button" class="rounded-lg px-3 py-1.5 text-xs font-bold text-slate-600 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400">取消</button>
-                                <button type="submit" class="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-indigo-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">跳轉</button>
-                            </div>
-                        </form>
-                    </div>
-                    <button id="planner-next-month" type="button" class="rounded-lg border border-slate-200 px-3 py-1.5 text-sm hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400" aria-label="下個月">›</button>
-                    <button id="planner-today" type="button" class="rounded-lg bg-rose-50 px-3 py-1.5 text-xs font-bold text-rose-700 hover:bg-rose-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400">今天</button>
-                </div>
-            </div>
-            <div id="planner-upcoming" class="mb-4 rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-800" aria-live="polite"></div>
-            <div class="overflow-x-auto pb-2"><div id="planner-calendar" class="grid min-w-[560px] grid-cols-7 gap-1" aria-label="共享日曆"></div></div>
-            <div class="mt-4 border-t border-slate-100 pt-3">
-                <h3 class="mb-2 text-sm font-bold text-slate-700">還沒排時間的願望</h3>
-                <div id="planner-wishes" class="flex flex-wrap gap-2 text-sm"></div>
-            </div>
-            <div class="mt-5 border-t border-slate-100 pt-4">
-                <h3 class="mb-2 text-sm font-bold text-slate-700">紀念日</h3>
-                <form id="anniversary-form" class="flex flex-wrap gap-2">
-                    <input id="anniversary-title" type="text" maxlength="100" required placeholder="例如：在一起的日子" aria-label="紀念日名稱" class="min-w-40 flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm">
-                    <input id="anniversary-date" type="date" required aria-label="紀念日日期" class="rounded-lg border border-slate-200 px-3 py-2 text-sm">
-                    <button type="submit" class="rounded-lg bg-rose-600 px-4 py-2 text-sm font-bold text-white hover:bg-rose-700">新增紀念日</button>
-                </form>
-                <div id="anniversary-list" class="mt-3 flex flex-wrap gap-2 text-xs text-slate-600"></div>
-            </div>
-        </section>
 
         <!-- 網格佈局區：動態分類 -->
         <div id="main-grid-container" class="grid grid-cols-1 md:grid-cols-2 gap-6">

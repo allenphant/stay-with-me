@@ -877,6 +877,9 @@
             if (!nav) return;
             nav.innerHTML = '';
 
+            // Shared planning is the first-level home destination.
+            nav.appendChild(createSidebarLink('couple-planner', 'fas fa-calendar-days', '共同計畫'));
+
             // Static: Inbox
             nav.appendChild(createSidebarLink('inbox', 'fas fa-inbox', '收件匣'));
             nav.appendChild(createSearchSidebarLink());
@@ -910,9 +913,11 @@
             btn.appendChild(icon);
             btn.appendChild(span);
             btn.addEventListener('click', () => {
-                const targetEl = targetId === 'inbox'
-                    ? document.querySelector('[data-col="inbox"]')?.closest('.category-wrapper')
-                    : document.getElementById(`list-${targetId}`)?.closest('.category-wrapper');
+                const targetEl = targetId === 'couple-planner'
+                    ? document.getElementById('couple-planner')
+                    : targetId === 'inbox'
+                        ? document.querySelector('[data-col="inbox"]')?.closest('.category-wrapper')
+                        : document.getElementById(`list-${targetId}`)?.closest('.category-wrapper');
                 if (targetEl) {
                     targetEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
                 }
@@ -2385,14 +2390,14 @@
         function initSidebarObserver() {
             if (sidebarObserver) sidebarObserver.disconnect();
 
-            const wrappers = document.querySelectorAll('.category-wrapper');
+            const wrappers = document.querySelectorAll('.category-wrapper, #couple-planner');
             if (wrappers.length === 0) return;
 
             sidebarObserver = new IntersectionObserver((entries) => {
                 entries.forEach(entry => {
                     if (!entry.isIntersecting) return;
                     const listEl = entry.target.querySelector('[data-col]');
-                    const colId = listEl ? listEl.getAttribute('data-col') : null;
+                    const colId = listEl?.getAttribute('data-col') || entry.target.id;
                     if (!colId) return;
 
                     document.querySelectorAll('.sidebar-link').forEach(link => {
