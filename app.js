@@ -407,19 +407,57 @@
                         }
                         return `<button type="button" class="planner-entry block w-full truncate rounded px-1.5 py-1 text-left text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 ${entry.completed ? 'bg-slate-100 text-slate-500 line-through' : 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100'}" data-col="${escapeHtml(entry.collectionId)}" data-id="${escapeHtml(entry.id)}" title="${escapeHtml(entry.title)}">${escapeHtml(PLAN_KINDS[entry.kind])} · ${escapeHtml(entry.title)}</button>`;
                     }).join('');
-                    return `<div class="min-h-20 min-w-0 rounded-lg border ${key === todayKey ? 'border-rose-300 bg-rose-50/30' : 'border-slate-100'} p-1"><button type="button" class="planner-day mb-1 rounded px-1 text-xs font-bold text-slate-600 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400" data-date="${key}" aria-label="在 ${year} 年 ${month} 月 ${day} 日排行程">${day}</button><div class="space-y-1">${items}</div></div>`;
+                    return `<div class="planner-calendar-day min-h-20 min-w-0 cursor-pointer rounded-lg border ${key === todayKey ? 'border-rose-300 bg-rose-50/30' : 'border-slate-100'} p-1 hover:bg-indigo-50/50" data-date="${key}"><button type="button" class="planner-day mb-1 rounded px-1 text-xs font-bold text-slate-600 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400" data-date="${key}" aria-label="在 ${year} 年 ${month} 月 ${day} 日排行程">${day}</button><div class="space-y-1">${items}</div></div>`;
                 }).join('');
         }
 
+        const monthJumpContainer = document.getElementById('planner-month-jump-container');
+        const monthJumpToggle = document.getElementById('planner-month-toggle');
+        const monthJumpForm = document.getElementById('planner-month-jump');
+        const monthJumpInput = document.getElementById('planner-month-input');
+
+        function closeMonthJump(restoreFocus = false) {
+            monthJumpForm.hidden = true;
+            monthJumpToggle.setAttribute('aria-expanded', 'false');
+            if (restoreFocus) monthJumpToggle.focus();
+        }
+
+        monthJumpToggle.addEventListener('click', () => {
+            if (!monthJumpForm.hidden) { closeMonthJump(); return; }
+            monthJumpInput.value = dateKey(plannerMonth.getFullYear(), plannerMonth.getMonth() + 1, 1).slice(0, 7);
+            monthJumpForm.hidden = false;
+            monthJumpToggle.setAttribute('aria-expanded', 'true');
+            monthJumpInput.focus();
+        });
+        document.getElementById('planner-month-cancel').addEventListener('click', () => closeMonthJump(true));
+        monthJumpForm.addEventListener('submit', event => {
+            event.preventDefault();
+            const selected = parseDateKey(`${monthJumpInput.value}-01`);
+            if (!selected) { monthJumpInput.setCustomValidity('請選擇有效年月'); monthJumpInput.reportValidity(); return; }
+            monthJumpInput.setCustomValidity('');
+            plannerMonth = new Date(selected.year, selected.month - 1, 1);
+            closeMonthJump(true);
+            renderCouplePlanner();
+        });
+        monthJumpInput.addEventListener('input', () => monthJumpInput.setCustomValidity(''));
+        document.addEventListener('pointerdown', event => {
+            if (!monthJumpForm.hidden && !monthJumpContainer.contains(event.target)) closeMonthJump();
+        });
+        document.addEventListener('keydown', event => {
+            if (event.key === 'Escape' && !monthJumpForm.hidden) { event.preventDefault(); closeMonthJump(true); }
+        });
         document.getElementById('planner-prev-month').addEventListener('click', () => {
+            closeMonthJump();
             plannerMonth = new Date(plannerMonth.getFullYear(), plannerMonth.getMonth() - 1, 1);
             renderCouplePlanner();
         });
         document.getElementById('planner-next-month').addEventListener('click', () => {
+            closeMonthJump();
             plannerMonth = new Date(plannerMonth.getFullYear(), plannerMonth.getMonth() + 1, 1);
             renderCouplePlanner();
         });
         document.getElementById('planner-today').addEventListener('click', () => {
+            closeMonthJump();
             plannerMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
             renderCouplePlanner();
         });
@@ -433,9 +471,13 @@
             const dayButton = event.target.closest('.planner-day');
             if (dayButton) { openCalendarEventModal(null, dayButton.dataset.date); return; }
             const button = event.target.closest('.planner-entry');
-            if (!button) return;
-            const item = currentItemsByCollection.get(button.dataset.col)?.find(value => value.id === button.dataset.id);
-            if (item) openEditor(item.id, item.text, button.dataset.col);
+            if (button) {
+                const item = currentItemsByCollection.get(button.dataset.col)?.find(value => value.id === button.dataset.id);
+                if (item) openEditor(item.id, item.text, button.dataset.col);
+                return;
+            }
+            const dayCell = event.target.closest('.planner-calendar-day');
+            if (dayCell) openCalendarEventModal(null, dayCell.dataset.date);
         }
         document.getElementById('planner-calendar').addEventListener('click', openPlannerEntry);
         document.getElementById('planner-wishes').addEventListener('click', openPlannerEntry);
