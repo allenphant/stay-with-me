@@ -1,6 +1,6 @@
 # 共同計畫首頁主軸已發布，等待正式站驗收（已完成／待驗收）
 
-> **更新時間**：2026-09-14 16:29
+> **更新時間**：2026-09-14 16:31
 > **專案核心**：以 Vanilla JS、Firebase Authentication／Firestore／Functions 與 GitHub Pages 打造的雙人共編生活空間。
 
 ## 本次對話目標
@@ -23,6 +23,7 @@
 * 表單可切換「行程／待辦／願望／約會」；行程仍寫入 `calendarEvents`，其餘仍寫入選定的 `type: todo` 分類，保留既有資料模型與 Firestore rules。待辦／願望可不填日期，約會與行程需要日期。
 * 共同計畫編輯可切換待辦分類與計畫類型；另提供「編輯完整內容」回到既有 EditorJS 編輯器，不把摘要欄位與完整筆記混在一起。
 * `couple-planner.mjs` 新增 `normalizePlannerCard`，並補上有效類型、分類、日期與約會必填日期的測試；DOM 測試覆蓋單一表單與四種入口。已推送至 `main` commit `20a8d86`，Pages run #22 成功，線上 `app.js`／`index.html` 雜湊分別與本機 `d32c0443`／`33c61183` 一致。
+* 程式碼知識圖譜已依本次版本重建為 769 nodes／2441 edges；`docs`、`scripts` 與測試依既有規則排除，沒有 parse partial 或 skipped 檔案。
 
 ### 日曆與單純排行程
 
