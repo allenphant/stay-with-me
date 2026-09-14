@@ -16,6 +16,22 @@ export function getPlanKind(item) {
     return Object.hasOwn(PLAN_KINDS, item?.planKind) ? item.planKind : 'task';
 }
 
+export function normalizeCalendarEvent(input) {
+    const title = String(input?.title || '').trim();
+    const date = String(input?.date || '');
+    const startTime = String(input?.startTime || '');
+    const endTime = String(input?.endTime || '');
+    const location = String(input?.location || '').trim();
+    const notes = String(input?.notes || '').trim();
+    if (!title || title.length > 100) throw new Error('請輸入 100 字以內的行程名稱');
+    if (!parseDateKey(date)) throw new Error('請選擇有效日期');
+    if (startTime && !/^([01]\d|2[0-3]):[0-5]\d$/.test(startTime)) throw new Error('開始時間格式不正確');
+    if (endTime && !/^([01]\d|2[0-3]):[0-5]\d$/.test(endTime)) throw new Error('結束時間格式不正確');
+    if (endTime && (!startTime || endTime <= startTime)) throw new Error('結束時間須晚於開始時間');
+    if (location.length > 120 || notes.length > 1000) throw new Error('地點或備註太長');
+    return { title, date, startTime, endTime, location, notes };
+}
+
 export function anniversaryOccurrence(anniversary, year) {
     const original = parseDateKey(anniversary?.date);
     if (!original || year < original.year) return null;
@@ -25,7 +41,7 @@ export function anniversaryOccurrence(anniversary, year) {
     return dateKey(year, original.month, day);
 }
 
-export function getCalendarEntries(todoGroups, anniversaries, year, month) {
+export function getCalendarEntries(todoGroups, anniversaries, year, month, calendarEvents = []) {
     const entries = [];
     for (const group of todoGroups) {
         for (const item of group.items || []) {
@@ -41,7 +57,16 @@ export function getCalendarEntries(todoGroups, anniversaries, year, month) {
         if (date?.month === month) entries.push({ id: anniversary.id, title: anniversary.title || '紀念日',
             date: occurrence, kind: 'anniversary', completed: false });
     }
-    return entries.sort((a, b) => a.date.localeCompare(b.date) || a.title.localeCompare(b.title, 'zh-Hant'));
+    for (const event of calendarEvents) {
+        const date = parseDateKey(event.date);
+        if (!date || date.year !== year || date.month !== month) continue;
+        entries.push({ id: event.id, title: event.title || '無標題行程', date: event.date,
+            kind: 'event', startTime: event.startTime || '', endTime: event.endTime || '',
+            location: event.location || '', notes: event.notes || '', completed: false });
+    }
+    return entries.sort((a, b) => a.date.localeCompare(b.date)
+        || (a.startTime || '').localeCompare(b.startTime || '')
+        || a.title.localeCompare(b.title, 'zh-Hant'));
 }
 
 export function getUpcomingAnniversaries(anniversaries, todayKey, daysAhead = 30) {

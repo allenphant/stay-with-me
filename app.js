@@ -5,7 +5,7 @@
         import { createLayerStack, attachKeyboardManager } from './js/keyboard-layers.js';
         import { attachMdShortcuts } from './js/md-shortcuts.js';
         import { groupCardsBySearch } from './card-search.mjs';
-        import { PLAN_KINDS, parseDateKey, dateKey, getPlanKind, getCalendarEntries, getUpcomingAnniversaries } from './couple-planner.mjs';
+        import { PLAN_KINDS, parseDateKey, dateKey, getPlanKind, getCalendarEntries, getUpcomingAnniversaries, normalizeCalendarEvent } from './couple-planner.mjs';
         import {
             buildTagUsageCounts,
             groupCardsByTagFilter,
@@ -115,6 +115,9 @@
         const currentItemsByCollection = new Map();
         let currentAnniversaries = [];
         let unsubscribeAnniversaries = null;
+        let currentCalendarEvents = [];
+        let unsubscribeCalendarEvents = null;
+        let activeCalendarEventId = null;
         let plannerMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
         const selectedTagFilterIds = new Set();
         const selectedResearchBackfillKeys = new Set();
@@ -353,6 +356,7 @@
             const year = plannerMonth.getFullYear();
             const month = plannerMonth.getMonth() + 1;
             document.getElementById('planner-month-label').textContent = `${year} 年 ${month} 月`;
+            document.getElementById('planner-add-event').disabled = !currentUser;
             if (!currentUser) {
                 calendar.innerHTML = '';
                 wishes.innerHTML = '';
@@ -378,7 +382,7 @@
             wishes.innerHTML = unscheduledWishes.length
                 ? unscheduledWishes.map(item => `<button type="button" class="planner-entry max-w-full truncate rounded-full bg-amber-50 px-3 py-1.5 text-left text-amber-800 hover:bg-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400" data-col="${escapeHtml(item.collectionId)}" data-id="${escapeHtml(item.id)}" title="開啟願望卡片">${escapeHtml(item.text || '無標題')}</button>`).join('')
                 : '<span class="text-xs text-slate-400">還沒有未排期的願望</span>';
-            const entries = getCalendarEntries(groups, currentAnniversaries, year, month);
+            const entries = getCalendarEntries(groups, currentAnniversaries, year, month, currentCalendarEvents);
             const byDate = new Map();
             for (const entry of entries) {
                 if (!byDate.has(entry.date)) byDate.set(entry.date, []);
@@ -392,10 +396,18 @@
                 + Array.from({ length: daysInMonth }, (_, index) => {
                     const day = index + 1;
                     const key = dateKey(year, month, day);
-                    const items = (byDate.get(key) || []).map(entry => entry.kind === 'anniversary'
-                        ? `<div class="truncate rounded bg-rose-100 px-1.5 py-1 text-[11px] text-rose-700" title="${escapeHtml(entry.title)}">♥ ${escapeHtml(entry.title)}</div>`
-                        : `<button type="button" class="planner-entry block w-full truncate rounded px-1.5 py-1 text-left text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 ${entry.completed ? 'bg-slate-100 text-slate-500 line-through' : 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100'}" data-col="${escapeHtml(entry.collectionId)}" data-id="${escapeHtml(entry.id)}" title="${escapeHtml(entry.title)}">${escapeHtml(PLAN_KINDS[entry.kind])} · ${escapeHtml(entry.title)}</button>`).join('');
-                    return `<div class="min-h-20 min-w-0 rounded-lg border ${key === todayKey ? 'border-rose-300 bg-rose-50/30' : 'border-slate-100'} p-1"><div class="mb-1 text-xs font-bold text-slate-500">${day}</div><div class="space-y-1">${items}</div></div>`;
+                    const items = (byDate.get(key) || []).map(entry => {
+                        if (entry.kind === 'anniversary') {
+                            return `<div class="truncate rounded bg-rose-100 px-1.5 py-1 text-[11px] text-rose-700" title="${escapeHtml(entry.title)}">♥ ${escapeHtml(entry.title)}</div>`;
+                        }
+                        if (entry.kind === 'event') {
+                            const time = entry.startTime ? `${entry.startTime} ` : '';
+                            const description = [entry.title, entry.startTime, entry.endTime, entry.location].filter(Boolean).join(' · ');
+                            return `<button type="button" class="calendar-event-entry block w-full truncate rounded bg-teal-50 px-1.5 py-1 text-left text-xs text-teal-800 hover:bg-teal-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-400" data-id="${escapeHtml(entry.id)}" title="${escapeHtml(description)}">${escapeHtml(time)}${escapeHtml(entry.title)}</button>`;
+                        }
+                        return `<button type="button" class="planner-entry block w-full truncate rounded px-1.5 py-1 text-left text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 ${entry.completed ? 'bg-slate-100 text-slate-500 line-through' : 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100'}" data-col="${escapeHtml(entry.collectionId)}" data-id="${escapeHtml(entry.id)}" title="${escapeHtml(entry.title)}">${escapeHtml(PLAN_KINDS[entry.kind])} · ${escapeHtml(entry.title)}</button>`;
+                    }).join('');
+                    return `<div class="min-h-20 min-w-0 rounded-lg border ${key === todayKey ? 'border-rose-300 bg-rose-50/30' : 'border-slate-100'} p-1"><button type="button" class="planner-day mb-1 rounded px-1 text-xs font-bold text-slate-600 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400" data-date="${key}" aria-label="在 ${year} 年 ${month} 月 ${day} 日排行程">${day}</button><div class="space-y-1">${items}</div></div>`;
                 }).join('');
         }
 
@@ -412,6 +424,14 @@
             renderCouplePlanner();
         });
         function openPlannerEntry(event) {
+            const calendarEventButton = event.target.closest('.calendar-event-entry');
+            if (calendarEventButton) {
+                const item = currentCalendarEvents.find(value => value.id === calendarEventButton.dataset.id);
+                if (item) openCalendarEventModal(item);
+                return;
+            }
+            const dayButton = event.target.closest('.planner-day');
+            if (dayButton) { openCalendarEventModal(null, dayButton.dataset.date); return; }
             const button = event.target.closest('.planner-entry');
             if (!button) return;
             const item = currentItemsByCollection.get(button.dataset.col)?.find(value => value.id === button.dataset.id);
@@ -419,6 +439,112 @@
         }
         document.getElementById('planner-calendar').addEventListener('click', openPlannerEntry);
         document.getElementById('planner-wishes').addEventListener('click', openPlannerEntry);
+        document.getElementById('planner-add-event').addEventListener('click', () => {
+            const today = new Date();
+            const visibleMonth = plannerMonth.getMonth() === today.getMonth() && plannerMonth.getFullYear() === today.getFullYear();
+            openCalendarEventModal(null, visibleMonth
+                ? dateKey(today.getFullYear(), today.getMonth() + 1, today.getDate())
+                : dateKey(plannerMonth.getFullYear(), plannerMonth.getMonth() + 1, 1));
+        });
+
+        const calendarEventModal = document.getElementById('calendar-event-modal');
+        const calendarEventForm = document.getElementById('calendar-event-form');
+        let calendarEventPreviousFocus = null;
+        let calendarEventBusy = false;
+
+        function showCalendarEventError(message) {
+            const error = document.getElementById('calendar-event-error');
+            error.textContent = message;
+            error.classList.toggle('hidden', !message);
+        }
+
+        function openCalendarEventModal(item = null, initialDate = '') {
+            if (!currentUser) { showToast('請先登入', 'fas fa-right-to-bracket'); return; }
+            calendarEventPreviousFocus = document.activeElement;
+            activeCalendarEventId = item?.id || null;
+            calendarEventForm.reset();
+            document.getElementById('calendar-event-modal-title').textContent = item ? '編輯行程' : '新增行程';
+            document.getElementById('calendar-event-title').value = item?.title || '';
+            document.getElementById('calendar-event-date').value = item?.date || initialDate;
+            document.getElementById('calendar-event-start').value = item?.startTime || '';
+            document.getElementById('calendar-event-end').value = item?.endTime || '';
+            document.getElementById('calendar-event-location').value = item?.location || '';
+            document.getElementById('calendar-event-notes').value = item?.notes || '';
+            document.getElementById('calendar-event-delete').classList.toggle('hidden', !item);
+            showCalendarEventError('');
+            calendarEventModal.classList.remove('hidden');
+            keyLayers.push({ name: 'calendar-event', keys: modalKeys(closeCalendarEventModal) });
+            document.getElementById('calendar-event-title').focus();
+        }
+
+        function closeCalendarEventModal() {
+            if (calendarEventBusy) return;
+            calendarEventModal.classList.add('hidden');
+            keyLayers.pop('calendar-event');
+            activeCalendarEventId = null;
+            calendarEventPreviousFocus?.focus?.();
+        }
+
+        calendarEventModal.addEventListener('keydown', event => trapDialogTab(calendarEventModal, event));
+        calendarEventModal.addEventListener('click', event => {
+            if (event.target === calendarEventModal) closeCalendarEventModal();
+        });
+        document.getElementById('calendar-event-cancel').addEventListener('click', closeCalendarEventModal);
+        calendarEventForm.addEventListener('submit', async event => {
+            event.preventDefault();
+            if (!currentUser || calendarEventBusy) return;
+            let fields;
+            try {
+                fields = normalizeCalendarEvent({
+                    title: document.getElementById('calendar-event-title').value,
+                    date: document.getElementById('calendar-event-date').value,
+                    startTime: document.getElementById('calendar-event-start').value,
+                    endTime: document.getElementById('calendar-event-end').value,
+                    location: document.getElementById('calendar-event-location').value,
+                    notes: document.getElementById('calendar-event-notes').value
+                });
+            } catch (error) { showCalendarEventError(error.message); return; }
+            const button = document.getElementById('calendar-event-save');
+            const deleteButton = document.getElementById('calendar-event-delete');
+            calendarEventBusy = true;
+            button.disabled = true;
+            deleteButton.disabled = true;
+            showCalendarEventError('');
+            try {
+                const spaceId = getActiveSpaceId();
+                if (activeCalendarEventId) {
+                    await updateDoc(doc(db, 'artifacts', appId, 'users', spaceId, 'calendarEvents', activeCalendarEventId), fields);
+                } else {
+                    await addDoc(collection(db, 'artifacts', appId, 'users', spaceId, 'calendarEvents'), {
+                        ...fields, createdAt: Date.now(), createdByUid: currentUser.uid
+                    });
+                }
+                const wasEditing = Boolean(activeCalendarEventId);
+                calendarEventBusy = false;
+                closeCalendarEventModal();
+                showToast(wasEditing ? '行程已更新' : '行程已排入日曆', 'fas fa-calendar-days');
+            } catch (error) {
+                console.error('儲存行程失敗', error);
+                showCalendarEventError('儲存行程失敗，請重試。');
+            } finally { calendarEventBusy = false; button.disabled = false; deleteButton.disabled = false; }
+        });
+        document.getElementById('calendar-event-delete').addEventListener('click', async () => {
+            if (!currentUser || calendarEventBusy || !activeCalendarEventId || !confirm('刪除這筆行程？')) return;
+            const button = document.getElementById('calendar-event-delete');
+            const saveButton = document.getElementById('calendar-event-save');
+            calendarEventBusy = true;
+            button.disabled = true;
+            saveButton.disabled = true;
+            try {
+                await deleteDoc(doc(db, 'artifacts', appId, 'users', getActiveSpaceId(), 'calendarEvents', activeCalendarEventId));
+                calendarEventBusy = false;
+                closeCalendarEventModal();
+                showToast('行程已刪除', 'fas fa-trash-alt');
+            } catch (error) {
+                console.error('刪除行程失敗', error);
+                showCalendarEventError('刪除行程失敗，請重試。');
+            } finally { calendarEventBusy = false; button.disabled = false; saveButton.disabled = false; }
+        });
         document.getElementById('anniversary-list').addEventListener('click', async event => {
             const button = event.target.closest('.delete-anniversary');
             if (!button || !currentUser || !confirm('刪除這個紀念日？')) return;
@@ -2650,7 +2776,9 @@
             if (!currentUser || !spaceId || initializedSpaceId === spaceId) return;
             initializedSpaceId = spaceId;
             unsubscribeAnniversaries?.();
+            unsubscribeCalendarEvents?.();
             currentAnniversaries = [];
+            currentCalendarEvents = [];
             currentItemsByCollection.clear();
             renderCouplePlanner();
             unsubscribeAnniversaries = onSnapshot(
@@ -2661,6 +2789,15 @@
                     renderCouplePlanner();
                 },
                 error => console.error('載入紀念日失敗', error)
+            );
+            unsubscribeCalendarEvents = onSnapshot(
+                collection(db, 'artifacts', appId, 'users', spaceId, 'calendarEvents'),
+                snapshot => {
+                    if (spaceId !== getActiveSpaceId()) return;
+                    currentCalendarEvents = snapshot.docs.map(item => ({ id: item.id, ...item.data() }));
+                    renderCouplePlanner();
+                },
+                error => console.error('載入行程失敗', error)
             );
             loadResearchReviews();
             updateResearchLogCount();
@@ -2746,7 +2883,10 @@
                 unsubscribeSpaceMembers = null;
                 unsubscribeAnniversaries?.();
                 unsubscribeAnniversaries = null;
+                unsubscribeCalendarEvents?.();
+                unsubscribeCalendarEvents = null;
                 currentAnniversaries = [];
+                currentCalendarEvents = [];
                 currentItemsByCollection.clear();
                 renderCouplePlanner();
                 renderSpaceControls();
