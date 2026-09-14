@@ -1,10 +1,11 @@
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, collection, query, where, addDoc, onSnapshot, deleteDoc, doc, updateDoc, getDoc, setDoc, runTransaction } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, collection, query, where, addDoc, onSnapshot, deleteDoc, deleteField, doc, updateDoc, getDoc, setDoc, runTransaction } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-functions.js";
         import { createLayerStack, attachKeyboardManager } from './js/keyboard-layers.js';
         import { attachMdShortcuts } from './js/md-shortcuts.js';
         import { groupCardsBySearch } from './card-search.mjs';
+        import { PLAN_KINDS, parseDateKey, dateKey, getPlanKind, getCalendarEntries, getUpcomingAnniversaries } from './couple-planner.mjs';
         import {
             buildTagUsageCounts,
             groupCardsByTagFilter,
@@ -112,6 +113,9 @@
         let draftTags = [];
         let currentInboxItems = []; 
         const currentItemsByCollection = new Map();
+        let currentAnniversaries = [];
+        let unsubscribeAnniversaries = null;
+        let plannerMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
         const selectedTagFilterIds = new Set();
         const selectedResearchBackfillKeys = new Set();
         let tagMatchMode = 'all';
@@ -259,16 +263,32 @@
         const moveModal = document.getElementById('move-modal');
         const editModal = document.getElementById('edit-modal');
         const editInput = document.getElementById('edit-input');
+        let editPreviousFocus = null;
+
+        function trapDialogTab(dialog, event) {
+            if (event.key !== 'Tab') return;
+            const focusable = [...dialog.querySelectorAll('button, input, select, textarea')]
+                .filter(element => !element.disabled && element.getClientRects().length > 0);
+            if (!focusable.length) return;
+            const first = focusable[0];
+            const last = focusable.at(-1);
+            if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+            else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+        }
 
         function openEditCardModal() {
+            editPreviousFocus = document.activeElement;
             editModal.classList.remove('hidden');
             keyLayers.push({ name: 'edit', keys: modalKeys(closeEditCardModal) });
+            editInput.focus();
         }
         function closeEditCardModal() {
             editModal.classList.add('hidden');
             pendingEditTarget = null;
             keyLayers.pop('edit');
+            editPreviousFocus?.focus?.();
         }
+        editModal.addEventListener('keydown', event => trapDialogTab(editModal, event));
 
         const getOrder = (item) => item.order !== undefined ? item.order : item.createdAt;
 
@@ -293,7 +313,9 @@
         function setupCategoryListener(catId, catType, catName, catIcon) {
             const listEl = document.getElementById(`list-${catId}`);
             if (!listEl) return;
+            const listenedSpaceId = getActiveSpaceId();
             onSnapshot(collection(db, 'artifacts', appId, 'users', getActiveSpaceId(), catId), (snapshot) => {
+                if (listenedSpaceId !== getActiveSpaceId()) return;
                 const items = []; snapshot.forEach(doc => items.push({ id: doc.id, ...doc.data() }));
                 items.sort((a, b) => getOrder(b) - getOrder(a));
                 currentItemsByCollection.set(catId, items);
@@ -312,10 +334,121 @@
                     renderList(items, listEl, catId, `${catIcon} text-slate-400`);
                 }
                 refreshOpenTagBrowser();
+                renderCouplePlanner();
                 renderAutomaticResearchScheduleStatus();
                 if (isAutomaticResearchDataReady()) scheduleAutomaticResearchCheck();
             });
         }
+
+        function getPlannerTodoGroups() {
+            return currentCategories.filter(category => category.type === 'todo')
+                .map(category => ({ id: category.id, items: currentItemsByCollection.get(category.id) || [] }));
+        }
+
+        function renderCouplePlanner() {
+            const calendar = document.getElementById('planner-calendar');
+            const wishes = document.getElementById('planner-wishes');
+            const upcoming = document.getElementById('planner-upcoming');
+            const anniversaryList = document.getElementById('anniversary-list');
+            const year = plannerMonth.getFullYear();
+            const month = plannerMonth.getMonth() + 1;
+            document.getElementById('planner-month-label').textContent = `${year} 年 ${month} 月`;
+            if (!currentUser) {
+                calendar.innerHTML = '';
+                wishes.innerHTML = '';
+                upcoming.textContent = '登入後即可查看共同日曆與紀念日。';
+                anniversaryList.innerHTML = '';
+                return;
+            }
+
+            const today = new Date();
+            const todayKey = dateKey(today.getFullYear(), today.getMonth() + 1, today.getDate());
+            const soon = getUpcomingAnniversaries(currentAnniversaries, todayKey);
+            upcoming.textContent = soon.length
+                ? `即將到來：${soon.map(item => `${item.occurrence} ${item.title}`).join('、')}`
+                : '未來 30 天沒有紀念日。';
+            anniversaryList.innerHTML = currentAnniversaries.length
+                ? currentAnniversaries.map(item => `<span class="inline-flex items-center gap-2 rounded-full bg-rose-50 px-3 py-1.5 text-rose-700">${escapeHtml(item.title)} · ${escapeHtml(item.date)} 每年 <button type="button" class="delete-anniversary hover:text-rose-900" data-id="${escapeHtml(item.id)}" aria-label="刪除 ${escapeHtml(item.title)}">×</button></span>`).join('')
+                : '<span class="text-slate-400">尚未加入紀念日</span>';
+
+            const groups = getPlannerTodoGroups();
+            const unscheduledWishes = groups.flatMap(group => group.items
+                .filter(item => getPlanKind(item) === 'wish' && !parseDateKey(item.planDate) && !item.completed)
+                .map(item => ({ ...item, collectionId: group.id })));
+            wishes.innerHTML = unscheduledWishes.length
+                ? unscheduledWishes.map(item => `<button type="button" class="planner-entry max-w-full truncate rounded-full bg-amber-50 px-3 py-1.5 text-left text-amber-800 hover:bg-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400" data-col="${escapeHtml(item.collectionId)}" data-id="${escapeHtml(item.id)}" title="開啟願望卡片">${escapeHtml(item.text || '無標題')}</button>`).join('')
+                : '<span class="text-xs text-slate-400">還沒有未排期的願望</span>';
+            const entries = getCalendarEntries(groups, currentAnniversaries, year, month);
+            const byDate = new Map();
+            for (const entry of entries) {
+                if (!byDate.has(entry.date)) byDate.set(entry.date, []);
+                byDate.get(entry.date).push(entry);
+            }
+            const firstWeekday = (new Date(year, month - 1, 1).getDay() + 6) % 7;
+            const daysInMonth = new Date(year, month, 0).getDate();
+            const weekdays = ['一', '二', '三', '四', '五', '六', '日'];
+            calendar.innerHTML = weekdays.map(day => `<div class="py-1 text-center text-xs font-bold text-slate-400">${day}</div>`).join('')
+                + Array.from({ length: firstWeekday }, () => '<div aria-hidden="true"></div>').join('')
+                + Array.from({ length: daysInMonth }, (_, index) => {
+                    const day = index + 1;
+                    const key = dateKey(year, month, day);
+                    const items = (byDate.get(key) || []).map(entry => entry.kind === 'anniversary'
+                        ? `<div class="truncate rounded bg-rose-100 px-1.5 py-1 text-[11px] text-rose-700" title="${escapeHtml(entry.title)}">♥ ${escapeHtml(entry.title)}</div>`
+                        : `<button type="button" class="planner-entry block w-full truncate rounded px-1.5 py-1 text-left text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 ${entry.completed ? 'bg-slate-100 text-slate-500 line-through' : 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100'}" data-col="${escapeHtml(entry.collectionId)}" data-id="${escapeHtml(entry.id)}" title="${escapeHtml(entry.title)}">${escapeHtml(PLAN_KINDS[entry.kind])} · ${escapeHtml(entry.title)}</button>`).join('');
+                    return `<div class="min-h-20 min-w-0 rounded-lg border ${key === todayKey ? 'border-rose-300 bg-rose-50/30' : 'border-slate-100'} p-1"><div class="mb-1 text-xs font-bold text-slate-500">${day}</div><div class="space-y-1">${items}</div></div>`;
+                }).join('');
+        }
+
+        document.getElementById('planner-prev-month').addEventListener('click', () => {
+            plannerMonth = new Date(plannerMonth.getFullYear(), plannerMonth.getMonth() - 1, 1);
+            renderCouplePlanner();
+        });
+        document.getElementById('planner-next-month').addEventListener('click', () => {
+            plannerMonth = new Date(plannerMonth.getFullYear(), plannerMonth.getMonth() + 1, 1);
+            renderCouplePlanner();
+        });
+        document.getElementById('planner-today').addEventListener('click', () => {
+            plannerMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+            renderCouplePlanner();
+        });
+        function openPlannerEntry(event) {
+            const button = event.target.closest('.planner-entry');
+            if (!button) return;
+            const item = currentItemsByCollection.get(button.dataset.col)?.find(value => value.id === button.dataset.id);
+            if (item) openEditor(item.id, item.text, button.dataset.col);
+        }
+        document.getElementById('planner-calendar').addEventListener('click', openPlannerEntry);
+        document.getElementById('planner-wishes').addEventListener('click', openPlannerEntry);
+        document.getElementById('anniversary-list').addEventListener('click', async event => {
+            const button = event.target.closest('.delete-anniversary');
+            if (!button || !currentUser || !confirm('刪除這個紀念日？')) return;
+            try {
+                await deleteDoc(doc(db, 'artifacts', appId, 'users', getActiveSpaceId(), 'anniversaries', button.dataset.id));
+            } catch (error) {
+                console.error('刪除紀念日失敗', error);
+                showToast('刪除紀念日失敗', 'fas fa-triangle-exclamation');
+            }
+        });
+        document.getElementById('anniversary-form').addEventListener('submit', async event => {
+            event.preventDefault();
+            const form = event.currentTarget;
+            if (!currentUser) { showToast('請先登入', 'fas fa-right-to-bracket'); return; }
+            const title = document.getElementById('anniversary-title').value.trim();
+            const date = document.getElementById('anniversary-date').value;
+            if (!title || !parseDateKey(date)) return;
+            const button = form.querySelector('button[type="submit"]');
+            button.disabled = true;
+            try {
+                await addDoc(collection(db, 'artifacts', appId, 'users', getActiveSpaceId(), 'anniversaries'), {
+                    title, date, createdAt: Date.now(), createdByUid: currentUser.uid
+                });
+                form.reset();
+                showToast('已新增每年重複的紀念日', 'fas fa-heart');
+            } catch (error) {
+                console.error('新增紀念日失敗', error);
+                showToast('新增紀念日失敗', 'fas fa-triangle-exclamation');
+            } finally { button.disabled = false; }
+        });
 
         const initDragAndDrop = () => {
             document.querySelectorAll('.sortable-list').forEach(list => {
@@ -2516,6 +2649,19 @@
         function startSpaceDataListeners(spaceId) {
             if (!currentUser || !spaceId || initializedSpaceId === spaceId) return;
             initializedSpaceId = spaceId;
+            unsubscribeAnniversaries?.();
+            currentAnniversaries = [];
+            currentItemsByCollection.clear();
+            renderCouplePlanner();
+            unsubscribeAnniversaries = onSnapshot(
+                collection(db, 'artifacts', appId, 'users', spaceId, 'anniversaries'),
+                snapshot => {
+                    if (spaceId !== getActiveSpaceId()) return;
+                    currentAnniversaries = snapshot.docs.map(item => ({ id: item.id, ...item.data() }));
+                    renderCouplePlanner();
+                },
+                error => console.error('載入紀念日失敗', error)
+            );
             loadResearchReviews();
             updateResearchLogCount();
             setupSpaceMembersListener(spaceId);
@@ -2598,6 +2744,11 @@
                 unsubscribeSpaceMemberships = null;
                 unsubscribeSpaceMembers?.();
                 unsubscribeSpaceMembers = null;
+                unsubscribeAnniversaries?.();
+                unsubscribeAnniversaries = null;
+                currentAnniversaries = [];
+                currentItemsByCollection.clear();
+                renderCouplePlanner();
                 renderSpaceControls();
                 renderSpaceMembers();
                 researchReviewItems = [];
@@ -2685,6 +2836,7 @@
                 
                 renderCategoryManagerList(currentCategories);
                 renderMainGrid(currentCategories);
+                renderCouplePlanner();
                 updateCategorySelectOptions(currentCategories);
                 renderSidebar(currentCategories);
                 setTimeout(initSidebarObserver, 100);
@@ -2745,7 +2897,13 @@
                 showMoveModal(item, collectionName);
             });
             li.querySelector('.edit-btn')?.addEventListener('click', () => {
-                pendingEditTarget = { id: item.id, col: collectionName }; editInput.value = item.text; openEditCardModal();
+                pendingEditTarget = { id: item.id, col: collectionName }; editInput.value = item.text;
+                const isTodo = currentCategories.some(category => category.id === collectionName && category.type === 'todo');
+                document.getElementById('edit-plan-fields').classList.toggle('hidden', !isTodo);
+                document.getElementById('edit-plan-fields').classList.toggle('grid', isTodo);
+                document.getElementById('edit-plan-kind').value = getPlanKind(item);
+                document.getElementById('edit-plan-date').value = parseDateKey(item.planDate) ? item.planDate : '';
+                openEditCardModal();
             });
             li.querySelector('.web-research-btn')?.addEventListener('click', (event) => {
                 event.preventDefault();
@@ -2894,6 +3052,7 @@
                                 <input type="checkbox" ${isCompleted ? 'checked' : ''} class="todo-checkbox w-4 h-4 text-emerald-500 rounded border-slate-300 focus:ring-emerald-500 cursor-pointer shrink-0 pointer-events-auto mt-[0.3rem]">
                                 <div class="leading-relaxed break-words break-all pr-2 flex-1 transition-all line-clamp-3 whitespace-pre-wrap ${textClass}">${escapeHtml(textWithoutUrl || item.text || '')}</div>
                             </div>
+                            ${(getPlanKind(item) !== 'task' || parseDateKey(item.planDate)) ? `<div class="ml-7 flex flex-wrap gap-1 text-[11px]"><span class="rounded-full bg-rose-50 px-2 py-0.5 text-rose-700">${PLAN_KINDS[getPlanKind(item)]}</span>${parseDateKey(item.planDate) ? `<span class="rounded-full bg-indigo-50 px-2 py-0.5 text-indigo-700">${escapeHtml(item.planDate)}</span>` : ''}</div>` : ''}
                         </div>
                     </div>
                     ${getImageHTML(item.imageUrl)}
@@ -3083,14 +3242,21 @@
         let activeAddCardColId = null;
         const addCardModal = document.getElementById('add-card-modal');
         const addCardInput = document.getElementById('add-card-input');
+        let addCardPreviousFocus = null;
 
         window.openAddCardModal = function(colId, colName) {
+            addCardPreviousFocus = document.activeElement;
             activeAddCardColId = colId;
             document.getElementById('add-card-modal-cat-name').textContent = colName;
             addCardInput.value = '';
+            const isTodo = currentCategories.some(category => category.id === colId && category.type === 'todo');
+            document.getElementById('add-plan-fields').classList.toggle('hidden', !isTodo);
+            document.getElementById('add-plan-fields').classList.toggle('grid', isTodo);
+            document.getElementById('add-plan-kind').value = 'task';
+            document.getElementById('add-plan-date').value = '';
             addCardModal.classList.remove('hidden');
             keyLayers.push({ name: 'add-card', keys: modalKeys(window.closeAddCardModal) });
-            setTimeout(() => addCardInput.focus(), 100);
+            addCardInput.focus();
         };
 
         window.closeAddCardModal = function() {
@@ -3098,7 +3264,9 @@
             keyLayers.pop('add-card');
             activeAddCardColId = null;
             addCardInput.value = '';
+            addCardPreviousFocus?.focus?.();
         };
+        addCardModal.addEventListener('keydown', event => trapDialogTab(addCardModal, event));
 
         document.getElementById('cancel-add-card-btn').addEventListener('click', closeAddCardModal);
         
@@ -3123,6 +3291,13 @@
             if (!text) return;
 
             const targetCollection = activeAddCardColId;
+            const isTodo = currentCategories.some(category => category.id === targetCollection && category.type === 'todo');
+            const planKind = document.getElementById('add-plan-kind').value;
+            const planDate = document.getElementById('add-plan-date').value;
+            if (isTodo && ((planDate && !parseDateKey(planDate)) || (planKind === 'date' && !planDate))) {
+                showToast('約會需要有效日期', 'fas fa-calendar-days');
+                return;
+            }
             const btn = document.getElementById('confirm-add-card-btn');
             btn.disabled = true;
             btn.innerHTML = '<div class="loader w-4 h-4 mx-auto border-t-white border-2"></div>';
@@ -3134,6 +3309,10 @@
                     createdAt: Date.now(), 
                     order: Date.now() 
                 };
+                if (isTodo) {
+                    newDocData.planKind = Object.hasOwn(PLAN_KINDS, planKind) ? planKind : 'task';
+                    if (planDate) newDocData.planDate = planDate;
+                }
 
                 const docRef = await addDoc(collection(db, 'artifacts', appId, 'users', getActiveSpaceId(), targetCollection), newDocData);
                 const newId = docRef.id;
@@ -3166,6 +3345,13 @@
         document.getElementById('confirm-edit-btn').addEventListener('click', async () => {
             if (currentUser && pendingEditTarget) {
                 const newText = document.getElementById('edit-input').value.trim(); if (!newText) return;
+                const isTodo = currentCategories.some(category => category.id === pendingEditTarget.col && category.type === 'todo');
+                const planKind = document.getElementById('edit-plan-kind').value;
+                const planDate = document.getElementById('edit-plan-date').value;
+                if (isTodo && ((planDate && !parseDateKey(planDate)) || (planKind === 'date' && !planDate))) {
+                    showToast('約會需要有效日期', 'fas fa-calendar-days');
+                    return;
+                }
                 const btn = document.getElementById('confirm-edit-btn'); const originalHTML = btn.innerHTML; btn.innerHTML = '<div class="loader w-4 h-4 mx-auto border-t-white border-2"></div>'; btn.disabled = true;
                 try { 
                     const col = pendingEditTarget.col;
@@ -3174,31 +3360,40 @@
                     const docSnap = await getDoc(docRef);
                     if (docSnap.exists()) {
                         const oldText = docSnap.data().text;
+                        const oldData = docSnap.data();
                         const shortOldText = getShortText(oldText);
                         const shortNewText = getShortText(newText);
+                        const newFields = {
+                            text: newText,
+                            cardSearchText: newText.toLocaleLowerCase('zh-Hant'),
+                            ...(isTodo ? { planKind, planDate: planDate || deleteField() } : {})
+                        };
+                        const oldFields = {
+                            text: oldText,
+                            cardSearchText: oldText.toLocaleLowerCase('zh-Hant'),
+                            ...(isTodo ? {
+                                planKind: oldData.planKind === undefined ? deleteField() : oldData.planKind,
+                                planDate: oldData.planDate === undefined ? deleteField() : oldData.planDate
+                            } : {})
+                        };
+                        await updateDoc(docRef, newFields);
                         historyManager.push({
                             undo: async () => {
-                                await updateDoc(doc(db, 'artifacts', appId, 'users', getActiveSpaceId(), col, id), {
-                                    text: oldText,
-                                    cardSearchText: oldText.toLocaleLowerCase('zh-Hant')
-                                });
+                                await updateDoc(doc(db, 'artifacts', appId, 'users', getActiveSpaceId(), col, id), oldFields);
                                 showToast(`已還原編輯：內容改回「${shortOldText}」`, 'fas fa-undo');
                             },
                             redo: async () => {
-                                await updateDoc(doc(db, 'artifacts', appId, 'users', getActiveSpaceId(), col, id), {
-                                    text: newText,
-                                    cardSearchText: newText.toLocaleLowerCase('zh-Hant')
-                                });
+                                await updateDoc(doc(db, 'artifacts', appId, 'users', getActiveSpaceId(), col, id), newFields);
                                 showToast(`已重做編輯：內容改為「${shortNewText}」`, 'fas fa-redo');
                             }
                         });
-                        await updateDoc(docRef, {
-                            text: newText,
-                            cardSearchText: newText.toLocaleLowerCase('zh-Hant')
-                        });
                         showToast(`已將內容修改為「${shortNewText}」`, 'fas fa-edit');
+                        closeEditCardModal();
                     }
-                } catch(err) {} finally { btn.innerHTML = originalHTML; btn.disabled = false; closeEditCardModal(); }
+                } catch(err) {
+                    console.error('編輯卡片失敗', err);
+                    showToast('編輯卡片失敗，請重試', 'fas fa-triangle-exclamation');
+                } finally { btn.innerHTML = originalHTML; btn.disabled = false; }
             }
         });
 
