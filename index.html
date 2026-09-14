@@ -312,6 +312,37 @@
             </ul>
         </div>
 
+        <!-- 共同計畫：待辦卡片與日曆共用同一份資料 -->
+        <section id="couple-planner" class="mb-8 rounded-2xl border border-rose-100 bg-white p-4 shadow-sm md:p-6" aria-labelledby="couple-planner-title">
+            <div class="mb-4 flex flex-wrap items-start justify-between gap-3">
+                <div>
+                    <h2 id="couple-planner-title" class="text-lg font-bold text-slate-800"><i class="fas fa-calendar-days mr-2 text-rose-500"></i>共同計畫</h2>
+                    <p class="mt-1 text-xs text-slate-500">在待辦分類新增願望或約會、排定日期，就會出現在這裡。</p>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button id="planner-prev-month" type="button" class="rounded-lg border border-slate-200 px-3 py-1.5 text-sm hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400" aria-label="上個月">‹</button>
+                    <span id="planner-month-label" class="min-w-24 text-center text-sm font-bold text-slate-700"></span>
+                    <button id="planner-next-month" type="button" class="rounded-lg border border-slate-200 px-3 py-1.5 text-sm hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400" aria-label="下個月">›</button>
+                    <button id="planner-today" type="button" class="rounded-lg bg-rose-50 px-3 py-1.5 text-xs font-bold text-rose-700 hover:bg-rose-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400">今天</button>
+                </div>
+            </div>
+            <div id="planner-upcoming" class="mb-4 rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-800" aria-live="polite"></div>
+            <div class="overflow-x-auto pb-2"><div id="planner-calendar" class="grid min-w-[560px] grid-cols-7 gap-1" aria-label="共享日曆"></div></div>
+            <div class="mt-4 border-t border-slate-100 pt-3">
+                <h3 class="mb-2 text-sm font-bold text-slate-700">還沒排時間的願望</h3>
+                <div id="planner-wishes" class="flex flex-wrap gap-2 text-sm"></div>
+            </div>
+            <div class="mt-5 border-t border-slate-100 pt-4">
+                <h3 class="mb-2 text-sm font-bold text-slate-700">紀念日</h3>
+                <form id="anniversary-form" class="flex flex-wrap gap-2">
+                    <input id="anniversary-title" type="text" maxlength="100" required placeholder="例如：在一起的日子" aria-label="紀念日名稱" class="min-w-40 flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm">
+                    <input id="anniversary-date" type="date" required aria-label="紀念日日期" class="rounded-lg border border-slate-200 px-3 py-2 text-sm">
+                    <button type="submit" class="rounded-lg bg-rose-600 px-4 py-2 text-sm font-bold text-white hover:bg-rose-700">新增紀念日</button>
+                </form>
+                <div id="anniversary-list" class="mt-3 flex flex-wrap gap-2 text-xs text-slate-600"></div>
+            </div>
+        </section>
+
         <!-- 網格佈局區：動態分類 -->
         <div id="main-grid-container" class="grid grid-cols-1 md:grid-cols-2 gap-6">
         </div>
@@ -887,15 +918,16 @@
             <button id="cancel-move-btn" class="px-4 py-2 rounded-lg font-semibold text-slate-600 hover:bg-slate-100 w-full">取消</button>
         </div>
     </div>
-    <div id="edit-modal" class="hidden fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"><div class="bg-white rounded-2xl w-full max-w-sm p-6 shadow-xl flex flex-col"><h3 class="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2"><i class="fas fa-pen text-indigo-500"></i> 編輯碎片</h3><textarea id="edit-input" class="w-full p-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-primary/50 text-sm mb-4 h-32 resize-none custom-scrollbar"></textarea><div class="flex justify-end gap-3"><button id="cancel-edit-btn" class="px-4 py-2 rounded-lg font-semibold text-slate-600 hover:bg-slate-100">取消</button><button id="confirm-edit-btn" class="px-4 py-2 rounded-lg font-semibold bg-indigo-600 text-white hover:bg-indigo-700">儲存</button></div></div></div>
+    <div id="edit-modal" class="hidden fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="edit-modal-title"><div class="bg-white rounded-2xl w-full max-w-sm p-6 shadow-xl flex flex-col"><h3 id="edit-modal-title" class="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2"><i class="fas fa-pen text-indigo-500"></i> 編輯碎片</h3><textarea id="edit-input" class="w-full p-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-primary/50 text-sm mb-4 h-32 resize-none custom-scrollbar"></textarea><div id="edit-plan-fields" class="mb-4 hidden grid-cols-2 gap-2"><label class="text-xs font-bold text-slate-600">類型<select id="edit-plan-kind" class="mt-1 w-full rounded-lg border border-slate-200 p-2 text-sm"><option value="task">待辦</option><option value="wish">願望</option><option value="date">約會</option></select></label><label class="text-xs font-bold text-slate-600">日期<input id="edit-plan-date" type="date" class="mt-1 w-full rounded-lg border border-slate-200 p-2 text-sm"></label></div><div class="flex justify-end gap-3"><button id="cancel-edit-btn" class="px-4 py-2 rounded-lg font-semibold text-slate-600 hover:bg-slate-100">取消</button><button id="confirm-edit-btn" class="px-4 py-2 rounded-lg font-semibold bg-indigo-600 text-white hover:bg-indigo-700">儲存</button></div></div></div>
     
     <!-- Add Card Popup Modal -->
-    <div id="add-card-modal" class="hidden fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+    <div id="add-card-modal" class="hidden fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="add-card-modal-title">
         <div class="bg-white rounded-2xl w-full max-w-sm p-6 shadow-xl flex flex-col">
-            <h3 class="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
+            <h3 id="add-card-modal-title" class="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
                 <i class="fas fa-plus text-indigo-500"></i> 新增卡片至 <span id="add-card-modal-cat-name" class="text-indigo-600 font-bold"></span>
             </h3>
             <textarea id="add-card-input" class="w-full p-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-primary/50 text-sm mb-4 h-32 resize-none custom-scrollbar" placeholder="輸入卡片內容..."></textarea>
+            <div id="add-plan-fields" class="mb-4 hidden grid-cols-2 gap-2"><label class="text-xs font-bold text-slate-600">類型<select id="add-plan-kind" class="mt-1 w-full rounded-lg border border-slate-200 p-2 text-sm"><option value="task">待辦</option><option value="wish">願望</option><option value="date">約會</option></select></label><label class="text-xs font-bold text-slate-600">日期<input id="add-plan-date" type="date" class="mt-1 w-full rounded-lg border border-slate-200 p-2 text-sm"></label></div>
             <div class="flex justify-end gap-3">
                 <button id="cancel-add-card-btn" class="px-4 py-2 rounded-lg font-semibold text-slate-600 hover:bg-slate-100">取消</button>
                 <button id="confirm-add-card-btn" class="px-4 py-2 rounded-lg font-semibold bg-indigo-600 text-white hover:bg-indigo-700">新增</button>
