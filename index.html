@@ -322,7 +322,17 @@
                 <div class="flex items-center gap-2">
                     <button id="planner-add-event" type="button" class="rounded-lg bg-indigo-600 px-3 py-2 text-xs font-bold text-white hover:bg-indigo-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:cursor-not-allowed disabled:opacity-50" aria-haspopup="dialog" aria-controls="calendar-event-modal"><i class="fas fa-plus mr-1" aria-hidden="true"></i>排行程</button>
                     <button id="planner-prev-month" type="button" class="rounded-lg border border-slate-200 px-3 py-1.5 text-sm hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400" aria-label="上個月">‹</button>
-                    <span id="planner-month-label" class="min-w-24 text-center text-sm font-bold text-slate-700"></span>
+                    <div id="planner-month-jump-container" class="relative">
+                        <button id="planner-month-toggle" type="button" class="min-w-24 rounded-lg px-2 py-1.5 text-center text-sm font-bold text-slate-700 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400" aria-label="選擇年月快速跳轉" aria-expanded="false" aria-controls="planner-month-jump"><span id="planner-month-label"></span></button>
+                        <form id="planner-month-jump" class="absolute left-1/2 top-full z-20 mt-2 w-56 -translate-x-1/2 rounded-xl border border-slate-200 bg-white p-3 shadow-lg" hidden>
+                            <label for="planner-month-input" class="mb-2 block text-xs font-bold text-slate-600">跳到哪個年月？</label>
+                            <input id="planner-month-input" type="month" min="0100-01" max="9999-12" required class="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400">
+                            <div class="mt-3 flex justify-end gap-2">
+                                <button id="planner-month-cancel" type="button" class="rounded-lg px-3 py-1.5 text-xs font-bold text-slate-600 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400">取消</button>
+                                <button type="submit" class="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-indigo-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">跳轉</button>
+                            </div>
+                        </form>
+                    </div>
                     <button id="planner-next-month" type="button" class="rounded-lg border border-slate-200 px-3 py-1.5 text-sm hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400" aria-label="下個月">›</button>
                     <button id="planner-today" type="button" class="rounded-lg bg-rose-50 px-3 py-1.5 text-xs font-bold text-rose-700 hover:bg-rose-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400">今天</button>
                 </div>
