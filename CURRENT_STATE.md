@@ -1,4 +1,4 @@
-# 純行程功能已推送 PR #5，尚未發布
+# 純行程功能已發布 GitHub Pages
 
 > **更新時間**：2026-09-14
 > **專案核心**：以 Vanilla JS、Firebase Authentication／Firestore／Functions 與 GitHub Pages 打造的雙人共編生活空間。
@@ -8,8 +8,9 @@
 * 使用者已在正式站驗收紀念日成功，並要求「單純排行程」。本版採快速概念範圍：在共享月曆直接新增／編輯／刪除單日行程，欄位是標題、日期、可選開始／結束時間、地點、備註；不建立待辦卡片、不需完成勾選。點月曆日期可預填日期；既有卡片和紀念日仍可同時顯示。
 * 行程存於目前空間 `artifacts/{appId}/users/{spaceId}/calendarEvents/{id}`，沿用既有空間成員 Firestore rules；本次未更動 rules 或 Functions。無重複行程、跨日行程、關閉 App 後提醒或外部行事曆同步，這些留待後續需求確認。
 * `couple-planner.mjs` 新增行程欄位驗證和月曆投影；`app.js` 管理 Firestore 即時監聽與表單 CRUD；`index.html` 新增獨立行程對話框；對應測試已擴充。`npm test` 19 個測試檔通過，`node --check` 和 `git diff --check` 通過。瀏覽器互動回歸仍受本機環境限制，需部署後由使用者驗收。
-* 工作分支：`feat/simple-calendar-events`，從已合併的 `origin/main` (`8070bed`) 建立。程式提交 `b1bd216` 已推送，建立 [PR #5](https://github.com/allenphant/stay-with-me/pull/5)；尚未合併或部署，正式站仍是紀念日第一階段版本。原有 `CLAUDE.md` 修改和 untracked `AGENTS.md` 為使用者變更，未納入功能 commit。
+* 工作分支 `feat/simple-calendar-events` 的程式提交為 `b1bd216`，經 [PR #5](https://github.com/allenphant/stay-with-me/pull/5) squash 合併到 `main`，發布 commit 為 `9b4946a25007e676677924b5e49d9afa587ba6ee`。GitHub Pages build API 顯示 `built`，正式站的 `index.html`、`app.js`、`couple-planner.mjs` SHA-256 與本次程式版本逐一相符。原有 `CLAUDE.md` 修改和 untracked `AGENTS.md` 為使用者變更，未納入功能 commit。
 * 後續功能仍未實作：每日共同問答、代幣與天竺鼠、AI 每週回顧。
+* 使用者已明確指定後續改動完成測試後直接推送，沿用本專案 PR→squash merge→GitHub Pages 的發布流程，在正式站驗收，不以本機瀏覽器驗收作為發布前提；遇到破壞性雲端操作或超出一般發布範圍的變更，仍應依既有授權規則處理。
 
 ## 上次狀態（2026-09-14：共同計畫第一階段）
 
