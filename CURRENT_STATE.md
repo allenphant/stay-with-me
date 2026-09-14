@@ -1,6 +1,6 @@
 # 共同計畫首頁主軸已發布，等待正式站驗收（已完成／待驗收）
 
-> **更新時間**：2026-09-14 16:27
+> **更新時間**：2026-09-14 16:29
 > **專案核心**：以 Vanilla JS、Firebase Authentication／Firestore／Functions 與 GitHub Pages 打造的雙人共編生活空間。
 
 ## 本次對話目標
@@ -15,14 +15,14 @@
 * 共同計畫現在位於頁面標題後的第一個核心區塊，收件匣與快速新增輸入框保留在後方；側欄第一項加入「共同計畫」，並讓 IntersectionObserver 在滾動時正確高亮 Planner。
 * 新增 `TODO.md` 作為產品待辦的主要維護文件，分開目前處理、產品功能、品質可及性與已完成項目；`CURRENT_STATE.md` 只記錄交接快照。
 * 功能已由 [PR #9](https://github.com/allenphant/stay-with-me/pull/9) squash 合併到 `main`，commit `2047fa0cd904ae3659b976cbcb3e2e291ea2f69f`；文件發布紀錄在 [PR #10](https://github.com/allenphant/stay-with-me/pull/10)，目前 `main`／`origin/main` 為 `623e1ad`。
-* 本次前端／文件已通過 `npm test`（20 個測試檔全過）、`node --check app.js`、`git diff --check`；impeccable layout detector 在 parser 降級模式下回報 0 個 layout finding。GitHub Pages build 已顯示 `built`，正式站 `index.html`、`app.js` 雜湊與合併版本相同；真人驗收仍待確認首頁順序、側欄跳轉與行程新增。
+* 本次前端／文件已通過 `npm test`（20 個測試檔全過）、`node --check app.js`、`git diff --check`；impeccable layout detector 在 parser 降級模式下回報 0 個 layout finding。GitHub Pages run #22 已 `success`，正式站 `index.html`、`app.js` 雜湊與 `main` 合併版本相同；真人驗收仍待確認首頁順序、側欄跳轉與共同計畫新增／編輯。
 
 ### 統一新增與編輯入口
 
 * 本次完成 Planner 的統一入口：首頁「新增計畫」、月曆空白日期、月曆既有項目、待辦分類右上角新增，以及待辦／願望／約會卡片的編輯，皆進入同一份表單。
 * 表單可切換「行程／待辦／願望／約會」；行程仍寫入 `calendarEvents`，其餘仍寫入選定的 `type: todo` 分類，保留既有資料模型與 Firestore rules。待辦／願望可不填日期，約會與行程需要日期。
 * 共同計畫編輯可切換待辦分類與計畫類型；另提供「編輯完整內容」回到既有 EditorJS 編輯器，不把摘要欄位與完整筆記混在一起。
-* `couple-planner.mjs` 新增 `normalizePlannerCard`，並補上有效類型、分類、日期與約會必填日期的測試；DOM 測試覆蓋單一表單與四種入口。
+* `couple-planner.mjs` 新增 `normalizePlannerCard`，並補上有效類型、分類、日期與約會必填日期的測試；DOM 測試覆蓋單一表單與四種入口。已推送至 `main` commit `20a8d86`，Pages run #22 成功，線上 `app.js`／`index.html` 雜湊分別與本機 `d32c0443`／`33c61183` 一致。
 
 ### 日曆與單純排行程
 
@@ -54,7 +54,7 @@
 
 ## 進行中與卡點 (In Progress & Blockers)
 
-* 目前無程式碼 blocker。待在正式站驗收首頁共同計畫順序、側欄跳轉、四種項目共用表單、點擊空白日期格新增，以及中央年月快速跳轉。
+* 目前無程式碼 blocker。待真人在正式站驗收首頁共同計畫順序、側欄跳轉、四種項目共用表單、點擊空白日期格新增，以及中央年月快速跳轉。
 * 雙帳號邀請／共同空間真人驗證仍依使用者決定延後；這不阻擋單帳號 UI 與日曆功能驗收。
 * 尚未實作的產品功能包括每日共同問答、代幣與天竺鼠、AI 每週回顧，以及每日小日記；產品優先順序以 `TODO.md` 為準。
 * 日記功能卡在安全規格決策：計價公式、最低／最高代幣、編輯後價格、錢包歸屬、解鎖紀錄與退款／重複解鎖行為尚未定案。
@@ -87,7 +87,7 @@
 
 ## 交接備忘錄 (Handover Context)
 
-正式站是 `https://allenphant.github.io/stay-with-me/`；Firebase project ID 是 `dating-with-viola`，資料 namespace 是 `stay-with-me`，Functions 位於 `asia-east1`。前端目前 `main`／`origin/main` 為 `623e1ad`，共同計畫首頁主軸發布在 `2047fa0`；本次統一入口程式變更完成測試，待推送後確認 GitHub Pages build 與正式站 HTML。Functions 正式環境目前部署自 `main` commit `232fef1`。研讀品質修正、一般網址的手動／自動／冪等 E2E，以及有上限的自動／人工重試都已完成並部署；測試資料先前已完整清除。
+正式站是 `https://allenphant.github.io/stay-with-me/`；Firebase project ID 是 `dating-with-viola`，資料 namespace 是 `stay-with-me`，Functions 位於 `asia-east1`。前端目前 `main`／`origin/main` 為 `20a8d86`，共同計畫首頁主軸發布在 `2047fa0`，統一入口發布在 `20a8d86`；GitHub Pages run #22 已成功且正式站 HTML／`app.js` 與本機版本雜湊一致。Functions 正式環境目前部署自 `main` commit `232fef1`。研讀品質修正、一般網址的手動／自動／冪等 E2E，以及有上限的自動／人工重試都已完成並部署；測試資料先前已完整清除。
 
 下一個 AI 接手後先閱讀 `/home/cdc/CCdevelopment/stay-with-me/source/CURRENT_STATE.md` 與 `TODO.md`，再依使用者指定優先順序工作。若要做正式環境重試 E2E，必須沿用隔離 namespace 加定向 Cloud Task；若要做前端改動，完成測試後直接走既定 PR／squash／Pages 流程並提供正式站驗收位置。雙帳號邀請／共同空間真人實測繼續延後。
 
