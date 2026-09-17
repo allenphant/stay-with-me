@@ -1,4 +1,4 @@
-# 共同計畫首頁主軸已發布，共同生活功能已部署／等待真人驗收
+# 共同計畫首頁主軸已發布，共同生活功能已部署／正式站驗收通過
 
 > **更新時間**：2026-09-17
 > **專案核心**：以 Vanilla JS、Firebase Authentication／Firestore／Functions 與 GitHub Pages 打造的雙人共編生活空間。
@@ -11,7 +11,7 @@
 
 ## 2026-09-17 共同生活功能批次
 
-本批已完成除「天竺鼠／飼料商店」以外的產品待辦，程式碼、回歸測試與正式 Firebase 部署完成；目前只剩使用者在正式站的真人驗收。
+本批已完成除「天竺鼠／飼料商店」以外的產品待辦，程式碼、回歸測試、正式 Firebase 部署與正式站真人驗收均已完成。
 
 * 新增 `couple-features.mjs` 與首頁「一起生活」區塊：每日共同問答、每日小日記、AI 每週回顧、共享白板與個人代幣餘額。
 * 代幣只由 Callable Functions 交易：首次使用 20 枚、每日回答 +5、每日寫日記 +3；錢包與 ledger 禁止客戶端寫入。
@@ -25,12 +25,12 @@
 * Firestore rules 已成功編譯並發布；`research-backend` Functions 已成功部署，新增 `ensureTokenWallet`、`submitDailyAnswer`、`saveDailyDiary`、`unlockDailyDiary`、`saveWeeklyReview` 五個 Callable Functions。未帶認證的 endpoint smoke check 正確回覆 `UNAUTHENTICATED`。
 * GitHub Pages run `35195406770` 已以 commit `90f5b66` 完成；正式站已回讀 `couple-life-hub`／「共同生活」標記：`https://allenphant.github.io/stay-with-me/`。
 * Functions 部署後嘗試恢復既有 `runResearchJob` Cloud Tasks 限速時，`oasis@cdc.gov.tw` 缺少 `cloudtasks.queues.update/get` 權限；沒有修改 IAM，queue 限速狀態仍待具權限帳號回讀確認。
-* 真人正式站驗收仍由使用者執行；目前 CUA 沒有可用瀏覽器或 App surface，未代替使用者宣稱 UI 驗收完成。
+* 使用者已確認正式站驗收通過；目前 CUA 沒有可用瀏覽器或 App surface，沒有代替使用者宣稱 UI 驗收完成。
 
 ## 本次對話目標
 
 * 依 `TODO.md` 從共同計畫主軸繼續完成不需要產品決策的技術待辦。
-* 使用者希望改動完成測試後直接推送到正式站驗收，不以本機瀏覽器驗收作為前提；正式站真人驗收仍由使用者執行。
+* 使用者希望改動完成測試後直接推送到正式站驗收，不以本機瀏覽器驗收作為前提；本批正式站真人驗收已完成。
 
 ## 已完成任務
 
@@ -89,7 +89,7 @@
 
 ## 進行中與卡點 (In Progress & Blockers)
 
-* 目前無程式碼 blocker。待真人在正式站驗收首頁共同計畫順序、側欄跳轉、四種項目共用表單、點擊空白日期格新增，以及中央年月快速跳轉。
+* 目前無程式碼 blocker；首頁共同計畫順序、側欄跳轉、行程新增與同步狀態修正已由使用者在正式站驗收通過。
 * 雙帳號邀請／共同空間真人驗證仍依使用者決定延後；這不阻擋單帳號 UI 與日曆功能驗收。
 * 尚未實作的產品功能包括每日共同問答、代幣與天竺鼠、AI 每週回顧、每日小日記，以及新提出的共享白板；產品優先順序以 `TODO.md` 為準。
 * 日記功能卡在安全規格決策：計價公式、最低／最高代幣、編輯後價格、錢包歸屬、解鎖紀錄與退款／重複解鎖行為尚未定案。
