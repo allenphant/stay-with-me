@@ -88,6 +88,11 @@ service cloud.firestore {
       allow read, write: if isSpaceMember(appId, spaceId);
     }
 
+    match /artifacts/{appId}/users/{spaceId}/pets/{petId} {
+      allow read: if isSpaceMember(appId, spaceId);
+      allow write: if false;
+    }
+
     // Existing card paths are retained for a no-copy migration: a space ID is
     // also the data-root ID. Personal space IDs equal their owner's UID.
     match /artifacts/{appId}/users/{spaceId}/{collectionName}/{document=**} {
@@ -97,6 +102,7 @@ service cloud.firestore {
         collectionName != "diaries" &&
         collectionName != "weeklyReviews" &&
         collectionName != "whiteboardBlocks" &&
+        collectionName != "pets" &&
         (isSpaceMember(appId, spaceId) || isPersonalBootstrap(appId, spaceId));
     }
 

@@ -4,6 +4,8 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const {
   DAILY_QUESTIONS,
+  GUINEA_PIG_FEEDS,
+  GUINEA_PIG_POLICY,
   TOKEN_POLICY,
   calculateDiaryPrice,
   normalizeDateKey,
@@ -28,4 +30,14 @@ test("daily question selection is deterministic", () => {
   assert.ok(DAILY_QUESTIONS.includes(questionForDate("2026-09-17")));
   assert.equal(questionForDate("2026-09-17"), questionForDate("2026-09-17"));
   assert.equal(questionForDate("invalid"), DAILY_QUESTIONS[0]);
+});
+
+test("guinea pig feed policy has bounded, token-priced care options", () => {
+  assert.equal(GUINEA_PIG_POLICY.name, "小糰子");
+  assert.deepEqual(Object.keys(GUINEA_PIG_FEEDS), ["hay", "vegetables", "treat"]);
+  for (const feed of Object.values(GUINEA_PIG_FEEDS)) {
+    assert.ok(feed.cost > 0);
+    assert.ok(feed.hunger >= 0 && feed.hunger <= 100);
+    assert.ok(feed.mood >= 0 && feed.mood <= 100);
+  }
 });

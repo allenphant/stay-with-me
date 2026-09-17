@@ -13,6 +13,8 @@ test('couple-life hub exposes each shared feature exactly once', () => {
         'daily-question-input', 'daily-question-submit', 'daily-question-answers',
         'daily-diary-form', 'daily-diary-date', 'daily-diary-input', 'daily-diary-submit',
         'daily-diary-list', 'weekly-review-panel', 'weekly-review-generate', 'weekly-review-content',
+        'guinea-pig-panel', 'guinea-pig-name', 'guinea-pig-name-card', 'guinea-pig-shop',
+        'guinea-pig-inventory', 'guinea-pig-hunger-bar', 'guinea-pig-mood-bar', 'guinea-pig-status',
         'shared-whiteboard-panel', 'shared-whiteboard-note-form', 'shared-whiteboard-note-input',
         'shared-whiteboard-todo-form', 'shared-whiteboard-todo-input', 'shared-whiteboard-list'
     ];
@@ -40,19 +42,21 @@ test('couple-life listeners attach to the active space and expose the sidebar de
     assert.match(app, /\.category-wrapper, #couple-planner, #couple-life-hub/);
 });
 
-test('feature module routes money and private content through trusted callables', () => {
-    for (const callable of ['ensureTokenWallet', 'submitDailyAnswer', 'saveDailyDiary', 'unlockDailyDiary', 'saveWeeklyReview']) {
+test('feature module routes money, pet state, and private content through trusted callables', () => {
+    for (const callable of ['ensureTokenWallet', 'ensureGuineaPig', 'buyGuineaPigFeed', 'feedGuineaPig', 'submitDailyAnswer', 'saveDailyDiary', 'unlockDailyDiary', 'saveWeeklyReview']) {
         assert.match(features, new RegExp(`call\\('${callable}'`), `${callable} should be called by the feature module`);
     }
+    assert.match(features, /GUINEA_PIG_FEEDS/);
     assert.match(features, /getDoc\(doc\(db, \.\.\.rootPath\(\), 'diaries', diary\.id, 'content', 'private'\)\)/);
     assert.match(features, /localStorage\.getItem\('geminiApiKey'\)/);
 });
 
-test('Firestore rules protect token, diary, review, and whiteboard boundaries', () => {
-    for (const collectionName of ['tokens', 'dailyQuestions', 'diaries', 'weeklyReviews', 'whiteboardBlocks']) {
+test('Firestore rules protect token, diary, review, whiteboard, and pet boundaries', () => {
+    for (const collectionName of ['tokens', 'dailyQuestions', 'diaries', 'weeklyReviews', 'whiteboardBlocks', 'pets']) {
         assert.match(rules, new RegExp(`collectionName != "${collectionName}"`));
     }
     assert.match(rules, /diaries\/\{diaryId\}\/content\/\{document=\*\*\}/);
     assert.match(rules, /allow write: if false;/);
     assert.match(rules, /whiteboardBlocks\/\{document=\*\*\}/);
+    assert.match(rules, /pets\/\{petId\}/);
 });

@@ -41,6 +41,8 @@ const {
 } = require("./spaces");
 const {
   calculateDiaryPrice,
+  GUINEA_PIG_FEEDS,
+  GUINEA_PIG_POLICY,
   normalizeDateKey,
   questionForDate,
   TOKEN_POLICY,
@@ -121,6 +123,36 @@ function dailyQuestionRef(spaceId, dateKey) {
 
 function diaryRef(spaceId, diaryId) {
   return coupleSpaceRoot(spaceId).collection("diaries").doc(diaryId);
+}
+
+function guineaPigRef(spaceId) {
+  return coupleSpaceRoot(spaceId).collection("pets").doc("guineaPig");
+}
+
+function normalizeGuineaPigFeedId(value) {
+  const feedId = String(value || "").trim();
+  if (!Object.prototype.hasOwnProperty.call(GUINEA_PIG_FEEDS, feedId)) {
+    throw new HttpsError("invalid-argument", "找不到這份飼料。");
+  }
+  return feedId;
+}
+
+function clampPetStat(value) {
+  return Math.min(100, Math.max(0, Number(value) || 0));
+}
+
+function defaultGuineaPigData(now) {
+  return {
+    species: "guinea_pig",
+    name: GUINEA_PIG_POLICY.name,
+    hunger: GUINEA_PIG_POLICY.initialHunger,
+    mood: GUINEA_PIG_POLICY.initialMood,
+    health: GUINEA_PIG_POLICY.initialHealth,
+    feedCount: 0,
+    inventory: {hay: 0, vegetables: 0, treat: 0},
+    createdAt: now,
+    updatedAt: now,
+  };
 }
 
 function todayDateKey(now = Date.now()) {
@@ -614,6 +646,168 @@ exports.ensureTokenWallet = onCall({
       createdAt: now,
     });
     return {balance: TOKEN_POLICY.welcomeGrant, initialized: true};
+  });
+});
+
+exports.ensureGuineaPig = onCall({
+  region: REGION,
+  memory: "256MiB",
+  minInstances: 0,
+  maxInstances: 1,
+}, async (request) => {
+  const uid = requireAuth(request);
+  const spaceId = assertDocumentPart(request.data?.spaceId || uid, "spaceId");
+  await requireSpaceMember(spaceId, uid);
+  const petRef = guineaPigRef(spaceId);
+
+  return db.runTransaction(async (transaction) => {
+    const snapshot = await transaction.get(petRef);
+    if (snapshot.exists) {
+      const pet = snapshot.data();
+      return {
+        created: false,
+        name: pet.name || GUINEA_PIG_POLICY.name,
+        hunger: clampPetStat(pet.hunger),
+        mood: clampPetStat(pet.mood),
+      };
+    }
+    const now = FieldValue.serverTimestamp();
+    transaction.set(petRef, defaultGuineaPigData(now));
+    return {
+      created: true,
+      name: GUINEA_PIG_POLICY.name,
+      hunger: GUINEA_PIG_POLICY.initialHunger,
+      mood: GUINEA_PIG_POLICY.initialMood,
+    };
+  });
+});
+
+exports.buyGuineaPigFeed = onCall({
+  region: REGION,
+  memory: "256MiB",
+  minInstances: 0,
+  maxInstances: 1,
+}, async (request) => {
+  const uid = requireAuth(request);
+  const spaceId = assertDocumentPart(request.data?.spaceId || uid, "spaceId");
+  await requireSpaceMember(spaceId, uid);
+  const feedId = normalizeGuineaPigFeedId(request.data?.feedId);
+  const purchaseId = assertDocumentPart(request.data?.purchaseId, "purchaseId");
+  const feed = GUINEA_PIG_FEEDS[feedId];
+  const petRef = guineaPigRef(spaceId);
+  const walletRef = tokenWalletRef(spaceId, uid);
+  const ledgerRef = tokenLedgerRef(spaceId, `guinea_pig_purchase_${uid}_${purchaseId}`);
+
+  return db.runTransaction(async (transaction) => {
+    const [ledgerSnapshot, walletSnapshot, petSnapshot] = await Promise.all([
+      transaction.get(ledgerRef),
+      transaction.get(walletRef),
+      transaction.get(petRef),
+    ]);
+    const existingWallet = walletSnapshot.exists ? walletSnapshot.data() : {};
+    const initialGrant = walletSnapshot.exists ? 0 : TOKEN_POLICY.welcomeGrant;
+    const currentBalance = Math.max(0, Number(existingWallet.balance || 0)) + initialGrant;
+    if (ledgerSnapshot.exists) {
+      return {
+        purchased: true,
+        charged: false,
+        balance: currentBalance,
+        feedId,
+        inventory: Number(petSnapshot.data()?.inventory?.[feedId] || 0),
+      };
+    }
+    if (currentBalance < feed.cost) {
+      throw new HttpsError("failed-precondition", `代幣不足，需要 ${feed.cost} 枚，目前有 ${currentBalance} 枚。`);
+    }
+
+    const now = FieldValue.serverTimestamp();
+    const existingPet = petSnapshot.exists ? petSnapshot.data() : defaultGuineaPigData(now);
+    const inventory = {
+      ...defaultGuineaPigData(now).inventory,
+      ...(existingPet.inventory || {}),
+    };
+    inventory[feedId] = Number(inventory[feedId] || 0) + 1;
+    const balance = currentBalance - feed.cost;
+    transaction.set(walletRef, {
+      uid,
+      balance,
+      totalEarned: Number(existingWallet.totalEarned || 0) + initialGrant,
+      totalSpent: Number(existingWallet.totalSpent || 0) + feed.cost,
+      ...(initialGrant ? {welcomeGrantedAt: now} : {}),
+      updatedAt: now,
+    }, {merge: true});
+    if (initialGrant) {
+      transaction.set(tokenLedgerRef(spaceId, `welcome_${uid}`), {
+        uid,
+        type: "welcome_grant",
+        amount: TOKEN_POLICY.welcomeGrant,
+        createdAt: now,
+      }, {merge: true});
+    }
+    transaction.set(petRef, {
+      species: existingPet.species || "guinea_pig",
+      name: existingPet.name || GUINEA_PIG_POLICY.name,
+      hunger: clampPetStat(existingPet.hunger || GUINEA_PIG_POLICY.initialHunger),
+      mood: clampPetStat(existingPet.mood || GUINEA_PIG_POLICY.initialMood),
+      health: clampPetStat(existingPet.health || GUINEA_PIG_POLICY.initialHealth),
+      feedCount: Number(existingPet.feedCount || 0),
+      inventory,
+      updatedAt: now,
+    }, {merge: true});
+    transaction.set(ledgerRef, {
+      uid,
+      type: "guinea_pig_feed_purchase",
+      feedId,
+      amount: -feed.cost,
+      purchaseId,
+      createdAt: now,
+    });
+    return {purchased: true, charged: true, balance, feedId, inventory: inventory[feedId]};
+  });
+});
+
+exports.feedGuineaPig = onCall({
+  region: REGION,
+  memory: "256MiB",
+  minInstances: 0,
+  maxInstances: 1,
+}, async (request) => {
+  const uid = requireAuth(request);
+  const spaceId = assertDocumentPart(request.data?.spaceId || uid, "spaceId");
+  await requireSpaceMember(spaceId, uid);
+  const feedId = normalizeGuineaPigFeedId(request.data?.feedId);
+  const feed = GUINEA_PIG_FEEDS[feedId];
+  const petRef = guineaPigRef(spaceId);
+
+  return db.runTransaction(async (transaction) => {
+    const snapshot = await transaction.get(petRef);
+    if (!snapshot.exists) {
+      throw new HttpsError("failed-precondition", "共同小夥伴尚未準備好，請稍後再試。");
+    }
+    const pet = snapshot.data();
+    const inventory = {
+      ...defaultGuineaPigData(FieldValue.serverTimestamp()).inventory,
+      ...(pet.inventory || {}),
+    };
+    const available = Number(inventory[feedId] || 0);
+    if (available < 1) {
+      throw new HttpsError("failed-precondition", `沒有${feed.name}了，先到飼料商店補貨吧。`);
+    }
+    inventory[feedId] = available - 1;
+    const hunger = clampPetStat(Number(pet.hunger || 0) + feed.hunger);
+    const mood = clampPetStat(Number(pet.mood || 0) + feed.mood);
+    const now = FieldValue.serverTimestamp();
+    transaction.set(petRef, {
+      inventory,
+      hunger,
+      mood,
+      health: clampPetStat(pet.health || GUINEA_PIG_POLICY.initialHealth),
+      feedCount: Number(pet.feedCount || 0) + 1,
+      lastFedByUid: uid,
+      lastFedAt: now,
+      updatedAt: now,
+    }, {merge: true});
+    return {fed: true, feedId, inventory: inventory[feedId], hunger, mood};
   });
 });
 

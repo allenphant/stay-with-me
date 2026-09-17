@@ -18,6 +18,12 @@ const TOKEN_POLICY = Object.freeze({
     diaryMaximumPrice: 30
 });
 
+export const GUINEA_PIG_FEEDS = Object.freeze([
+    {id: 'hay', name: '高級牧草', cost: 3, hunger: 18, mood: 2, icon: 'fa-seedling', description: '每天都需要的安心主食。'},
+    {id: 'vegetables', name: '小蔬菜盤', cost: 5, hunger: 10, mood: 8, icon: 'fa-carrot', description: '補充水分，也讓今天心情更好。'},
+    {id: 'treat', name: '磨牙小點心', cost: 8, hunger: 5, mood: 15, icon: 'fa-cookie-bite', description: '偶爾來一點，開心值大提升。'}
+]);
+
 const DAILY_QUESTIONS = [
     '最近有哪一個小瞬間，讓你覺得和對方一起生活很幸福？',
     '如果今天晚上多出兩個小時，你最想和對方一起做什麼？',
@@ -116,6 +122,7 @@ export function createCoupleFeatures({
         openDiaryId: null,
         whiteboardBlocks: [],
         weeklyReview: null,
+        guineaPig: null,
         busy: new Set()
     };
 
@@ -151,6 +158,83 @@ export function createCoupleFeatures({
             setStatus('couple-token-status', `每日回答 +${TOKEN_POLICY.dailyAnswerReward}，寫日記 +${TOKEN_POLICY.dailyDiaryReward}；首次使用贈送 ${TOKEN_POLICY.welcomeGrant} 枚。`);
         }
         if (status) status.setAttribute('aria-live', 'polite');
+    }
+
+    function guineaPigFeed(feedId) {
+        return GUINEA_PIG_FEEDS.find(feed => feed.id === feedId) || null;
+    }
+
+    function renderGuineaPigStat(barId, valueId, value) {
+        const normalized = Math.min(100, Math.max(0, Number(value) || 0));
+        const bar = element(barId);
+        const valueElement = element(valueId);
+        if (bar) {
+            bar.style.width = `${normalized}%`;
+            bar.parentElement?.setAttribute('aria-valuenow', `${normalized}`);
+        }
+        if (valueElement) valueElement.textContent = `${normalized}`;
+    }
+
+    function renderGuineaPig() {
+        const pet = state.guineaPig;
+        const name = element('guinea-pig-name');
+        const cardName = element('guinea-pig-name-card');
+        const careStatus = element('guinea-pig-care-status');
+        const inventoryElement = element('guinea-pig-inventory');
+        const shop = element('guinea-pig-shop');
+        const status = element('guinea-pig-status');
+        if (!name || !careStatus || !inventoryElement || !shop || !status) return;
+
+        name.textContent = pet?.name || '小糰子';
+        if (cardName) cardName.textContent = pet?.name || '小糰子';
+        if (!currentUser()) {
+            careStatus.textContent = '登入後就能和對方一起照顧牠。';
+            status.textContent = '登入後會準備你們的共同小夥伴。';
+        } else if (!pet) {
+            careStatus.textContent = '正在準備你們的共同小夥伴…';
+            status.textContent = '第一次進入時會自動領養小糰子。';
+        } else {
+            careStatus.textContent = `${pet.feedCount || 0} 次共同餵食 · 兩個人都可以照顧牠`;
+            status.textContent = '用每日累積的代幣買飼料，再一起餵飽小糰子。';
+        }
+        renderGuineaPigStat('guinea-pig-hunger-bar', 'guinea-pig-hunger-value', pet?.hunger || 0);
+        renderGuineaPigStat('guinea-pig-mood-bar', 'guinea-pig-mood-value', pet?.mood || 0);
+
+        inventoryElement.replaceChildren();
+        GUINEA_PIG_FEEDS.forEach(feed => {
+            const item = createElement('span', 'rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-amber-900');
+            item.textContent = `${feed.name} ${Number(pet?.inventory?.[feed.id] || 0)}`;
+            inventoryElement.appendChild(item);
+        });
+
+        shop.replaceChildren();
+        GUINEA_PIG_FEEDS.forEach(feed => {
+            const card = createElement('article', 'rounded-xl border border-amber-100 bg-white p-3');
+            const heading = createElement('div', 'flex items-start justify-between gap-2');
+            const title = createElement('div', 'flex min-w-0 items-center gap-2');
+            title.appendChild(createElement('span', 'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-50 text-amber-700', ''));
+            title.querySelector('span').appendChild(createElement('i', `fas ${feed.icon}`, ''));
+            title.appendChild(createElement('h4', 'truncate text-sm font-bold text-slate-800', feed.name));
+            heading.appendChild(title);
+            heading.appendChild(createElement('span', 'shrink-0 rounded-full bg-amber-50 px-2 py-1 text-xs font-bold text-amber-800', `${feed.cost} 枚`));
+            card.appendChild(heading);
+            card.appendChild(createElement('p', 'mt-2 min-h-10 text-xs leading-5 text-slate-500', feed.description));
+            const actions = createElement('div', 'mt-3 flex flex-wrap gap-2');
+            const buy = createElement('button', 'min-h-9 flex-1 rounded-lg bg-amber-500 px-3 py-2 text-xs font-bold text-white hover:bg-amber-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300 disabled:cursor-not-allowed disabled:opacity-50', '購買');
+            buy.type = 'button';
+            buy.dataset.guineaPigBuy = feed.id;
+            buy.disabled = !currentUser() || !pet || state.busy.has(`buy:${feed.id}`) || Number(state.wallet?.balance || 0) < feed.cost;
+            buy.textContent = state.busy.has(`buy:${feed.id}`) ? '購買中…' : Number(state.wallet?.balance || 0) < feed.cost ? '代幣不足' : '購買';
+            const feedButton = createElement('button', 'min-h-9 flex-1 rounded-lg border border-indigo-200 px-3 py-2 text-xs font-bold text-indigo-700 hover:bg-indigo-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300 disabled:cursor-not-allowed disabled:opacity-50', '餵食');
+            feedButton.type = 'button';
+            feedButton.dataset.guineaPigFeed = feed.id;
+            const inventoryCount = Number(pet?.inventory?.[feed.id] || 0);
+            feedButton.disabled = !currentUser() || !pet || inventoryCount < 1 || state.busy.has(`feed:${feed.id}`);
+            feedButton.textContent = state.busy.has(`feed:${feed.id}`) ? '餵食中…' : inventoryCount ? `餵食 ×${inventoryCount}` : '尚無庫存';
+            actions.append(buy, feedButton);
+            card.appendChild(actions);
+            shop.appendChild(card);
+        });
     }
 
     function memberLabel(uid) {
@@ -340,6 +424,7 @@ export function createCoupleFeatures({
 
     function renderAll() {
         renderTokenBalance();
+        renderGuineaPig();
         renderQuestion();
         renderDiaryPrice();
         renderDiaryList();
@@ -366,6 +451,7 @@ export function createCoupleFeatures({
         listen(doc(db, ...root, 'tokens', 'wallets', uid), snapshot => {
             state.wallet = snapshot.exists() ? snapshot.data() : null;
             renderTokenBalance();
+            renderGuineaPig();
         }, '代幣');
         const questionDate = todayKey();
         listen(doc(db, ...root, 'dailyQuestions', questionDate), snapshot => {
@@ -395,6 +481,10 @@ export function createCoupleFeatures({
             state.whiteboardBlocks = snapshot.docs.map(item => ({ id: item.id, ...item.data() }));
             renderWhiteboard();
         }, '白板');
+        listen(doc(db, ...root, 'pets', 'guineaPig'), snapshot => {
+            state.guineaPig = snapshot.exists() ? {id: snapshot.id, ...snapshot.data()} : null;
+            renderGuineaPig();
+        }, '天竺鼠');
         listen(doc(db, ...root, 'weeklyReviews', weekKey()), snapshot => {
             state.weeklyReview = snapshot.exists() ? snapshot.data() : null;
             renderWeeklyReview();
@@ -402,6 +492,10 @@ export function createCoupleFeatures({
         call('ensureTokenWallet', { spaceId }).catch(error => {
             console.error('建立代幣錢包失敗', error);
             setStatus('couple-token-status', '代幣錢包尚未準備好，請稍後重試。', 'error');
+        });
+        call('ensureGuineaPig', {spaceId}).catch(error => {
+            console.error('建立天竺鼠失敗', error);
+            setStatus('guinea-pig-status', '共同小夥伴尚未準備好，請稍後重試。', 'error');
         });
         renderAll();
     }
@@ -419,6 +513,7 @@ export function createCoupleFeatures({
         state.openDiaryId = null;
         state.whiteboardBlocks = [];
         state.weeklyReview = null;
+        state.guineaPig = null;
         state.busy.clear();
         renderAll();
     }
@@ -566,6 +661,50 @@ export function createCoupleFeatures({
         }
     }
 
+    function createPurchaseId() {
+        return globalThis.crypto?.randomUUID?.() || `${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    }
+
+    async function buyGuineaPigFeed(feedId) {
+        const feed = guineaPigFeed(feedId);
+        if (!feed || !currentUser() || !state.spaceId || state.busy.has(`buy:${feedId}`)) return;
+        setBusy(`buy:${feedId}`, true);
+        renderGuineaPig();
+        try {
+            const result = await call('buyGuineaPigFeed', {
+                spaceId: state.spaceId,
+                feedId,
+                purchaseId: createPurchaseId()
+            });
+            setStatus('guinea-pig-status', `${feed.name} 已放進共同庫存，剩餘 ${result.data?.balance ?? '—'} 枚代幣。`, 'success');
+            showToast(`${feed.name} 購買完成。`, 'fas fa-bag-shopping');
+        } catch (error) {
+            console.error('購買天竺鼠飼料失敗', error);
+            setStatus('guinea-pig-status', error?.message || '購買失敗，請稍後再試。', 'error');
+        } finally {
+            setBusy(`buy:${feedId}`, false);
+            renderGuineaPig();
+        }
+    }
+
+    async function feedGuineaPig(feedId) {
+        const feed = guineaPigFeed(feedId);
+        if (!feed || !currentUser() || !state.spaceId || state.busy.has(`feed:${feedId}`)) return;
+        setBusy(`feed:${feedId}`, true);
+        renderGuineaPig();
+        try {
+            const result = await call('feedGuineaPig', {spaceId: state.spaceId, feedId});
+            setStatus('guinea-pig-status', `小糰子吃了${feed.name}，飽足度 ${result.data?.hunger ?? '—'}、心情 ${result.data?.mood ?? '—'}。`, 'success');
+            showToast('小糰子吃飽了。', 'fas fa-heart');
+        } catch (error) {
+            console.error('餵食天竺鼠失敗', error);
+            setStatus('guinea-pig-status', error?.message || '餵食失敗，請稍後再試。', 'error');
+        } finally {
+            setBusy(`feed:${feedId}`, false);
+            renderGuineaPig();
+        }
+    }
+
     function buildWeeklyReviewPrompt() {
         const context = getPlannerContext?.() || {};
         const visibleDiaries = state.diaries.map(diary => ({
@@ -632,6 +771,15 @@ ${JSON.stringify(context, null, 2)}`;
         element('shared-whiteboard-note-form')?.addEventListener('submit', event => addWhiteboardBlock(event, 'note'));
         element('shared-whiteboard-todo-form')?.addEventListener('submit', event => addWhiteboardBlock(event, 'todo'));
         element('weekly-review-generate')?.addEventListener('click', generateWeeklyReview);
+        element('guinea-pig-shop')?.addEventListener('click', event => {
+            const buyButton = event.target.closest('[data-guinea-pig-buy]');
+            if (buyButton) {
+                void buyGuineaPigFeed(buyButton.dataset.guineaPigBuy);
+                return;
+            }
+            const feedButton = event.target.closest('[data-guinea-pig-feed]');
+            if (feedButton) void feedGuineaPig(feedButton.dataset.guineaPigFeed);
+        });
         element('daily-diary-list')?.addEventListener('click', event => {
             const button = event.target.closest('[data-diary-action]');
             if (!button) return;
