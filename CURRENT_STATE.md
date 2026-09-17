@@ -1,4 +1,4 @@
-# 共同計畫首頁主軸已發布，共同生活功能已部署／正式站驗收通過
+# 共同計畫首頁主軸已發布，共同生活功能驗收通過／天竺鼠功能已部署待驗收
 
 > **更新時間**：2026-09-17
 > **專案核心**：以 Vanilla JS、Firebase Authentication／Firestore／Functions 與 GitHub Pages 打造的雙人共編生活空間。
@@ -8,6 +8,13 @@
 * 已修正共同計畫同步狀態的兩個問題：Firestore 本機快取沒有伺服器回覆時不再永久顯示「同步中…」；分類快照也不會再把已完成的紀念日／行程同步狀態重設回 `syncing`。
 * 連續 12 秒只收到本機快取時，Planner 會顯示「離線快取」並提供「重新連線」；真正收到伺服器快照才會顯示「已同步」。狀態提示會保留可及性的錯誤說明。
 * 已補回歸斷言，`node --check app.js`、`npm test`（22／22）與 `git diff --check` 通過；修正已推送至 commit `77c657d`，正式站已回讀到逾時與「離線快取」文案。
+
+## 2026-09-17 天竺鼠功能已部署
+
+* 一起生活新增「共同小夥伴」區塊：共同空間有一隻小糰子，兩個人可以查看飽足度、心情與共享飼料庫存。
+* 飼料商店提供高級牧草（3 枚）、小蔬菜盤（5 枚）與磨牙小點心（8 枚）；購買會扣除目前登入者的代幣，餵食會消耗共享庫存並提升小糰子狀態。
+* 新增 `ensureGuineaPig`、`buyGuineaPigFeed`、`feedGuineaPig` 三個 Callable Functions；Firestore rules 允許成員讀取寵物狀態，但禁止客戶端直接寫入 `pets`。
+* 前端與測試已提交至 commit `f4b66fa`；Firebase rules 與 Functions 已成功部署，未登入 smoke check 正確回覆 `UNAUTHENTICATED`。正式站真人驗收待使用者確認商店購買與餵食流程。
 
 ## 2026-09-17 共同生活功能批次
 
@@ -25,7 +32,7 @@
 * Firestore rules 已成功編譯並發布；`research-backend` Functions 已成功部署，新增 `ensureTokenWallet`、`submitDailyAnswer`、`saveDailyDiary`、`unlockDailyDiary`、`saveWeeklyReview` 五個 Callable Functions。未帶認證的 endpoint smoke check 正確回覆 `UNAUTHENTICATED`。
 * GitHub Pages run `35195406770` 已以 commit `90f5b66` 完成；正式站已回讀 `couple-life-hub`／「共同生活」標記：`https://allenphant.github.io/stay-with-me/`。
 * Functions 部署後嘗試恢復既有 `runResearchJob` Cloud Tasks 限速時，`oasis@cdc.gov.tw` 缺少 `cloudtasks.queues.update/get` 權限；沒有修改 IAM，queue 限速狀態仍待具權限帳號回讀確認。
-* 使用者已確認正式站驗收通過；目前 CUA 沒有可用瀏覽器或 App surface，沒有代替使用者宣稱 UI 驗收完成。
+* 共同生活原有功能的正式站驗收已通過；天竺鼠新增流程尚待使用者在正式站驗收。目前 CUA 沒有可用瀏覽器或 App surface，沒有代替使用者宣稱 UI 驗收完成。
 
 ## 本次對話目標
 
@@ -91,10 +98,10 @@
 
 * 目前無程式碼 blocker；首頁共同計畫順序、側欄跳轉、行程新增與同步狀態修正已由使用者在正式站驗收通過。
 * 雙帳號邀請／共同空間真人驗證仍依使用者決定延後；這不阻擋單帳號 UI 與日曆功能驗收。
-* 尚未實作的產品功能包括每日共同問答、代幣與天竺鼠、AI 每週回顧、每日小日記，以及新提出的共享白板；產品優先順序以 `TODO.md` 為準。
+* 每日共同問答、代幣、AI 每週回顧、每日小日記、共享白板與天竺鼠功能均已實作；目前產品上暫停的只有天竺鼠後續擴充內容，產品優先順序以 `TODO.md` 為準。
 * 日記功能卡在安全規格決策：計價公式、最低／最高代幣、編輯後價格、錢包歸屬、解鎖紀錄與退款／重複解鎖行為尚未定案。
-* 共享白板卡在第一版互動模型：需先決定結構化區塊白板或自由拖拉無限畫布、白板數量與即時衝突處理，以及白板 Todo 是否同步到共同計畫；在這些決策前不先猜規格實作。
-* 設定 modal 拆分涉及資訊架構與優先層級，尚未自行改版。
+* 共享白板第一版已採單一結構化區塊白板，支援自由文字與 Todo；即時同步採最後寫入者優先，Todo 暫不同步至 Planner。
+* 設定 modal 已拆分為共同空間與 AI／研讀兩個分頁。
 * 若要再驗證雲端研讀重試，必須用隔離 namespace 加定向 Cloud Task，驗證 `failed_terminal → manual_retry`、usage 不增加與兩輪上限，不可啟動 production Scheduler。
 * GitHub App／本機 `gh` 曾沒有可用寫入權限，但直接 `git push` 可用，不阻擋既定發布方式；`npm audit --omit=dev` 當時為 9 個 moderate、0 high／critical，皆來自既有 Firebase 依賴鏈，未執行可能造成 Firebase 套件變動的自動修復。
 
