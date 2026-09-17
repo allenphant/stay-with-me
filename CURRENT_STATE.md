@@ -1,11 +1,11 @@
-# 共同計畫首頁主軸已發布，技術待辦完成一批／等待正式站驗收與產品決策
+# 共同計畫首頁主軸已發布，共同生活功能已部署／等待真人驗收
 
 > **更新時間**：2026-09-17
 > **專案核心**：以 Vanilla JS、Firebase Authentication／Firestore／Functions 與 GitHub Pages 打造的雙人共編生活空間。
 
 ## 2026-09-17 共同生活功能批次
 
-本批已完成除「天竺鼠／飼料商店」以外的產品待辦，程式碼與回歸測試完成；前端可由 GitHub Pages 發布，Functions／Firestore rules 仍需 Firebase CLI 重新登入後部署。
+本批已完成除「天竺鼠／飼料商店」以外的產品待辦，程式碼、回歸測試與正式 Firebase 部署完成；目前只剩使用者在正式站的真人驗收。
 
 * 新增 `couple-features.mjs` 與首頁「一起生活」區塊：每日共同問答、每日小日記、AI 每週回顧、共享白板與個人代幣餘額。
 * 代幣只由 Callable Functions 交易：首次使用 20 枚、每日回答 +5、每日寫日記 +3；錢包與 ledger 禁止客戶端寫入。
@@ -16,8 +16,9 @@
 
 ### 本批部署狀態
 
-* Firebase CLI 嘗試部署 rules 時回覆 `Authentication Error: Your credentials are no longer valid. Please run firebase login --reauth`，因此 Functions／rules 尚未更新到正式 Firebase。需要使用者重新登入 Firebase CLI 後，再執行既定部署指令。
+* Firestore rules 已成功編譯並發布；`research-backend` Functions 已成功部署，新增 `ensureTokenWallet`、`submitDailyAnswer`、`saveDailyDiary`、`unlockDailyDiary`、`saveWeeklyReview` 五個 Callable Functions。未帶認證的 endpoint smoke check 正確回覆 `UNAUTHENTICATED`。
 * GitHub Pages run `35195406770` 已以 commit `90f5b66` 完成；正式站已回讀 `couple-life-hub`／「共同生活」標記：`https://allenphant.github.io/stay-with-me/`。
+* Functions 部署後嘗試恢復既有 `runResearchJob` Cloud Tasks 限速時，`oasis@cdc.gov.tw` 缺少 `cloudtasks.queues.update/get` 權限；沒有修改 IAM，queue 限速狀態仍待具權限帳號回讀確認。
 * 真人正式站驗收仍由使用者執行；目前 CUA 沒有可用瀏覽器或 App surface，未代替使用者宣稱 UI 驗收完成。
 
 ## 本次對話目標
