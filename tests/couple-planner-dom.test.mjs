@@ -49,6 +49,10 @@ test('planner exposes sync, collaborators, last-synced metadata and retry contro
     assert.match(app, /includeMetadataChanges: true/);
     assert.match(app, /retryPlannerSync/);
     assert.match(app, /plannerSnapshotState/);
+    assert.match(app, /PLANNER_SYNC_TIMEOUT_MS/);
+    assert.match(app, /schedulePlannerSyncTimeout/);
+    assert.match(app, /resetPlannerPlanSyncState/);
+    assert.match(app, /離線快取/);
 });
 
 test('unified planner editor has required title/date and dialog semantics', () => {

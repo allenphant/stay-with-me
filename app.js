@@ -130,6 +130,8 @@
             plans: 'syncing'
         };
         const plannerSyncErrors = new Map();
+        const plannerSyncTimers = new Map();
+        const PLANNER_SYNC_TIMEOUT_MS = 12_000;
         const plannerTodoCollectionIds = new Set();
         const plannerTodoSyncStates = new Map();
         const plannerCategoryUnsubscribes = new Map();
@@ -365,9 +367,48 @@
             plannerCategoryUnsubscribes.clear();
         }
 
+        function clearPlannerSyncTimer(key) {
+            const timer = plannerSyncTimers.get(key);
+            if (!timer) return;
+            clearTimeout(timer);
+            plannerSyncTimers.delete(key);
+        }
+
+        function clearPlannerSyncTimers() {
+            plannerSyncTimers.forEach(timer => clearTimeout(timer));
+            plannerSyncTimers.clear();
+        }
+
+        function schedulePlannerSyncTimeout(key, spaceId) {
+            clearPlannerSyncTimer(key);
+            plannerSyncTimers.set(key, setTimeout(() => {
+                plannerSyncTimers.delete(key);
+                if (spaceId !== getActiveSpaceId() || plannerSyncState[key] !== 'syncing') return;
+                const isOffline = typeof navigator !== 'undefined' && navigator.onLine === false;
+                updatePlannerSyncState(
+                    key,
+                    'cached',
+                    isOffline
+                        ? '目前離線，畫面顯示本機快取。'
+                        : 'Firebase 尚未回覆，畫面可能只顯示本機快取。'
+                );
+            }, PLANNER_SYNC_TIMEOUT_MS));
+        }
+
+        function schedulePlannerPlansSyncTimeout(spaceId) {
+            if (plannerTodoCollectionIds.size === 0) {
+                clearPlannerSyncTimer('plans');
+                updatePlannerSyncState('plans', 'synced');
+                return;
+            }
+            updatePlannerSyncState('plans', 'syncing');
+            schedulePlannerSyncTimeout('plans', spaceId);
+        }
+
         function setupPlannerCollectionListeners(spaceId) {
             unsubscribeAnniversaries?.();
             unsubscribeCalendarEvents?.();
+            clearPlannerSyncTimers();
             currentAnniversaries = [];
             currentCalendarEvents = [];
             resetPlannerSyncState();
@@ -388,6 +429,7 @@
                     updatePlannerSyncState('anniversaries', 'error', error.message);
                 }
             );
+            schedulePlannerSyncTimeout('anniversaries', spaceId);
             const calendarEventsRef = collection(db, 'artifacts', appId, 'users', spaceId, 'calendarEvents');
             unsubscribeCalendarEvents = onSnapshot(
                 calendarEventsRef,
@@ -404,6 +446,7 @@
                     updatePlannerSyncState('calendarEvents', 'error', error.message);
                 }
             );
+            schedulePlannerSyncTimeout('calendarEvents', spaceId);
         }
 
         async function retryPlannerSync() {
@@ -414,6 +457,7 @@
                 const spaceId = getActiveSpaceId();
                 cleanupPlannerCategoryListeners();
                 setupPlannerCollectionListeners(spaceId);
+                schedulePlannerPlansSyncTimeout(spaceId);
                 renderMainGrid(currentCategories);
                 showToast('已重新連線共同計畫', 'fas fa-rotate');
             } catch (error) {
@@ -517,30 +561,37 @@
             if (!status || !retry) return;
             const states = [...Object.values(plannerSyncState)];
             const hasError = states.includes('error');
+            const hasCached = states.includes('cached');
             const isSyncing = states.includes('syncing');
-            const summary = hasError ? 'error' : isSyncing ? 'syncing' : 'synced';
+            const summary = hasError ? 'error' : hasCached ? 'cached' : isSyncing ? 'syncing' : 'synced';
             const statusCopy = {
                 syncing: '同步中…',
                 synced: '已同步',
+                cached: '離線快取',
                 error: '同步失敗'
             };
             const statusStyles = {
                 syncing: ['bg-amber-50', 'text-amber-700'],
                 synced: ['bg-emerald-50', 'text-emerald-700'],
+                cached: ['bg-amber-50', 'text-amber-800'],
                 error: ['bg-rose-50', 'text-rose-700']
             };
             status.dataset.state = summary;
             status.textContent = statusCopy[summary];
             status.className = `rounded-full px-2.5 py-1 font-semibold ${statusStyles[summary][0]} ${statusStyles[summary][1]}`;
-            retry.classList.toggle('hidden', summary !== 'error');
+            const errorMessage = [...plannerSyncErrors.values()][0] || '';
+            status.title = errorMessage;
+            status.setAttribute('aria-label', errorMessage ? `${statusCopy[summary]}：${errorMessage}` : statusCopy[summary]);
+            retry.classList.toggle('hidden', !['cached', 'error'].includes(summary));
             retry.disabled = plannerSyncRetryBusy;
-            retry.textContent = plannerSyncRetryBusy ? '重試中…' : '重試同步';
+            retry.textContent = plannerSyncRetryBusy ? '重試中…' : summary === 'cached' ? '重新連線' : '重試同步';
         }
 
         function updatePlannerSyncState(key, state, error = '') {
             if (!(key in plannerSyncState)) return;
+            if (state !== 'syncing') clearPlannerSyncTimer(key);
             plannerSyncState[key] = state;
-            if (state === 'error' && error) plannerSyncErrors.set(key, error);
+            if (['cached', 'error'].includes(state) && error) plannerSyncErrors.set(key, error);
             else plannerSyncErrors.delete(key);
             renderPlannerSyncStatus();
         }
@@ -556,11 +607,17 @@
             plannerSyncErrors.clear();
             plannerSyncState.anniversaries = 'syncing';
             plannerSyncState.calendarEvents = 'syncing';
-            plannerSyncState.plans = plannerTodoCollectionIds.size === 0 ? 'synced' : 'syncing';
-            plannerTodoSyncStates.clear();
+            resetPlannerPlanSyncState();
             plannerLastSyncedAt = null;
             renderPlannerSyncStatus();
             renderPlannerCollaborationMeta();
+        }
+
+        function resetPlannerPlanSyncState() {
+            plannerSyncErrors.delete('plans');
+            plannerSyncState.plans = plannerTodoCollectionIds.size === 0 ? 'synced' : 'syncing';
+            plannerTodoSyncStates.clear();
+            renderPlannerSyncStatus();
         }
 
         function markPlannerSnapshotSynced(snapshot) {
@@ -3469,6 +3526,7 @@
                 unsubscribeCalendarEvents?.();
                 unsubscribeCalendarEvents = null;
                 cleanupPlannerCategoryListeners();
+                clearPlannerSyncTimers();
                 coupleFeatures.detach();
                 plannerTodoCollectionIds.clear();
                 plannerTodoSyncStates.clear();
@@ -3562,7 +3620,8 @@
                 plannerTodoCollectionIds.clear();
                 currentCategories.filter(category => category.type === 'todo')
                     .forEach(category => plannerTodoCollectionIds.add(category.id));
-                resetPlannerSyncState();
+                resetPlannerPlanSyncState();
+                schedulePlannerPlansSyncTimeout(getActiveSpaceId());
                 [...currentItemsByCollection.keys()].forEach(id => {
                     if (!categoryIds.has(id)) currentItemsByCollection.delete(id);
                 });
