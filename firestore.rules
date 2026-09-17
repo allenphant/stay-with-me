@@ -43,10 +43,60 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Couple-life data with money or privacy implications is written only by
+    // trusted Callable Functions. The client can read the shared feature
+    // state, but it cannot mint tokens, change prices, or reveal diary text.
+    match /artifacts/{appId}/users/{spaceId}/tokens/wallets/{uid} {
+      allow read: if isSpaceMember(appId, spaceId) && request.auth.uid == uid;
+      allow write: if false;
+    }
+
+    match /artifacts/{appId}/users/{spaceId}/tokens/ledger/{ledgerId} {
+      allow read: if isSpaceMember(appId, spaceId) && resource.data.uid == request.auth.uid;
+      allow write: if false;
+    }
+
+    match /artifacts/{appId}/users/{spaceId}/dailyQuestions/{document=**} {
+      allow read: if isSpaceMember(appId, spaceId);
+      allow write: if false;
+    }
+
+    match /artifacts/{appId}/users/{spaceId}/diaries/{diaryId} {
+      allow read: if isSpaceMember(appId, spaceId);
+      allow write: if false;
+    }
+
+    match /artifacts/{appId}/users/{spaceId}/diaries/{diaryId}/content/{document=**} {
+      allow read: if isSpaceMember(appId, spaceId) && (
+        get(/databases/$(database)/documents/artifacts/$(appId)/users/$(spaceId)/diaries/$(diaryId)).data.authorUid == request.auth.uid ||
+        exists(/databases/$(database)/documents/artifacts/$(appId)/users/$(spaceId)/diaries/$(diaryId)/unlocks/$(request.auth.uid))
+      );
+      allow write: if false;
+    }
+
+    match /artifacts/{appId}/users/{spaceId}/diaries/{diaryId}/unlocks/{uid} {
+      allow read: if isSpaceMember(appId, spaceId);
+      allow write: if false;
+    }
+
+    match /artifacts/{appId}/users/{spaceId}/weeklyReviews/{document=**} {
+      allow read: if isSpaceMember(appId, spaceId);
+      allow write: if false;
+    }
+
+    match /artifacts/{appId}/users/{spaceId}/whiteboardBlocks/{document=**} {
+      allow read, write: if isSpaceMember(appId, spaceId);
+    }
+
     // Existing card paths are retained for a no-copy migration: a space ID is
     // also the data-root ID. Personal space IDs equal their owner's UID.
     match /artifacts/{appId}/users/{spaceId}/{collectionName}/{document=**} {
       allow read, write: if collectionName != "memberships" &&
+        collectionName != "tokens" &&
+        collectionName != "dailyQuestions" &&
+        collectionName != "diaries" &&
+        collectionName != "weeklyReviews" &&
+        collectionName != "whiteboardBlocks" &&
         (isSpaceMember(appId, spaceId) || isPersonalBootstrap(appId, spaceId));
     }
 

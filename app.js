@@ -6,6 +6,7 @@
         import { attachMdShortcuts } from './js/md-shortcuts.js';
         import { groupCardsBySearch } from './card-search.mjs';
         import { PLAN_KINDS, parseDateKey, dateKey, getPlanKind, getCalendarEntries, getUpcomingAnniversaries, normalizeCalendarEvent, normalizePlannerCard } from './couple-planner.mjs';
+        import { createCoupleFeatures } from './couple-features.mjs';
         import {
             buildTagUsageCounts,
             groupCardsByTagFilter,
@@ -182,6 +183,39 @@
         let isSorting = false; 
         let isInitialInboxLoad = true; 
         let justDropped = false;
+
+        const coupleFeatures = createCoupleFeatures({
+            db,
+            appId: () => appId,
+            cloudFunctions,
+            httpsCallable,
+            getCurrentUser: () => currentUser,
+            getMembers: () => currentSpaceMembers,
+            getPlannerContext: () => ({
+                todos: [...currentItemsByCollection.values()]
+                    .flat()
+                    .filter(item => item?.planKind || item?.completed)
+                    .slice(0, 80)
+                    .map(item => ({
+                        text: String(item.text || '').slice(0, 240),
+                        completed: item.completed === true,
+                        planKind: item.planKind || 'task',
+                        planDate: item.planDate || ''
+                    })),
+                events: currentCalendarEvents.slice(0, 50).map(event => ({
+                    title: String(event.title || '').slice(0, 160),
+                    date: event.date || '',
+                    startTime: event.startTime || '',
+                    location: event.location || ''
+                })),
+                anniversaries: currentAnniversaries.slice(0, 30).map(item => ({
+                    title: String(item.title || '').slice(0, 120),
+                    date: item.date || ''
+                }))
+            }),
+            openSettings: panel => openSettingsModal(panel),
+            showToast: (...args) => window.showToast?.(...args)
+        });
 
         // --- History Manager for Undo/Redo ---
         class HistoryManager {
@@ -1390,6 +1424,7 @@
 
             // Shared planning is the first-level home destination.
             nav.appendChild(createSidebarLink('couple-planner', 'fas fa-calendar-days', '共同計畫'));
+            nav.appendChild(createSidebarLink('couple-life-hub', 'fas fa-heart-pulse', '一起生活'));
 
             // Static: Inbox
             nav.appendChild(createSidebarLink('inbox', 'fas fa-inbox', '收件匣'));
@@ -1426,6 +1461,8 @@
             btn.addEventListener('click', () => {
                 const targetEl = targetId === 'couple-planner'
                     ? document.getElementById('couple-planner')
+                    : targetId === 'couple-life-hub'
+                        ? document.getElementById('couple-life-hub')
                     : targetId === 'inbox'
                         ? document.querySelector('[data-col="inbox"]')?.closest('.category-wrapper')
                         : document.getElementById(`list-${targetId}`)?.closest('.category-wrapper');
@@ -2902,7 +2939,7 @@
         function initSidebarObserver() {
             if (sidebarObserver) sidebarObserver.disconnect();
 
-            const wrappers = document.querySelectorAll('.category-wrapper, #couple-planner');
+            const wrappers = document.querySelectorAll('.category-wrapper, #couple-planner, #couple-life-hub');
             if (wrappers.length === 0) return;
 
             sidebarObserver = new IntersectionObserver((entries) => {
@@ -3349,6 +3386,7 @@
             setupSpaceMembersListener(spaceId);
             setupRealtimeListeners(spaceId);
             setupCloudResearchListeners(spaceId);
+            coupleFeatures.attachSpace(spaceId);
             openRequestedEditorForSpace(spaceId);
         }
 
@@ -3431,6 +3469,7 @@
                 unsubscribeCalendarEvents?.();
                 unsubscribeCalendarEvents = null;
                 cleanupPlannerCategoryListeners();
+                coupleFeatures.detach();
                 plannerTodoCollectionIds.clear();
                 plannerTodoSyncStates.clear();
                 plannerSyncState.anniversaries = 'syncing';
@@ -4326,7 +4365,7 @@
                 console.warn('無法讀取 AI 設定：', error);
             }
             if (!apiKey && !directVideoPage) {
-                if (!fromBackfill) openSettingsModal();
+                if (!fromBackfill) openSettingsModal('ai');
                 const providerLabel = providerName === 'mistral' ? 'Mistral' : 'Gemini';
                 recordResearchLog({
                     ...logContext, level: 'error', stage: 'provider', provider: providerLabel,
@@ -4779,7 +4818,7 @@
             const imgbbKey = localStorage.getItem('imgbbApiKey');
             if (!imgbbKey) {
                 alert("請先點擊右上角「⚙️ 系統設定」，填寫免費的 ImgBB API Key 才能解鎖圖片上傳功能！");
-                openSettingsModal();
+                openSettingsModal('ai');
                 return;
             }
             
@@ -5199,12 +5238,28 @@
             renderTagManager();
         }
 
+        function setSettingsPanel(panel = 'space') {
+            const activePanel = panel === 'ai' ? 'ai' : 'space';
+            document.querySelectorAll('[data-settings-panel]').forEach(section => {
+                section.hidden = section.dataset.settingsPanel !== activePanel;
+            });
+            document.querySelectorAll('[data-settings-tab]').forEach(tab => {
+                const active = tab.dataset.settingsTab === activePanel;
+                tab.setAttribute('aria-selected', String(active));
+                tab.classList.toggle('bg-white', active);
+                tab.classList.toggle('shadow-sm', active);
+                tab.classList.toggle('text-rose-700', active && activePanel === 'space');
+                tab.classList.toggle('text-indigo-700', active && activePanel === 'ai');
+                tab.classList.toggle('text-slate-600', !active);
+            });
+        }
+
         function closeSettingsModal() {
             document.getElementById('settings-modal').classList.add('hidden');
             keyLayers.pop('settings');
         }
 
-        function openSettingsModal() {
+        function openSettingsModal(initialPanel = 'space') {
             document.getElementById('api-key-input').value = localStorage.getItem('geminiApiKey') || '';
             const mistralKey = localStorage.getItem('mistralApiKey') || '';
             document.getElementById('mistral-api-key-input').value = mistralKey;
@@ -5239,6 +5294,7 @@
             renderWebResearchProviderSettings();
             updateAiStatusPanel();
             renderAutomaticResearchScheduleStatus();
+            setSettingsPanel(initialPanel);
             document.getElementById('settings-modal').classList.remove('hidden');
             keyLayers.push({ name: 'settings', keys: modalKeys(closeSettingsModal) });
         }
@@ -5396,6 +5452,9 @@
             if (e.target === settingsModal) {
                 closeSettingsModal();
             }
+        });
+        document.querySelectorAll('[data-settings-tab]').forEach(tab => {
+            tab.addEventListener('click', () => setSettingsPanel(tab.dataset.settingsTab));
         });
         document.getElementById('close-modal-btn').addEventListener('click', () => closeSettingsModal());
 
@@ -5693,7 +5752,7 @@
         async function runAiSort() {
             if (isSorting || currentInboxItems.length === 0 || !currentUser) return false;
             const apiKey = localStorage.getItem('geminiApiKey'); const targetModel = localStorage.getItem('geminiModel') || 'gemini-2.5-flash';
-            if (!apiKey) { openSettingsModal(); return false; }
+            if (!apiKey) { openSettingsModal('ai'); return false; }
             const lastManualSortTime = parseInt(localStorage.getItem('lastManualSortTime') || '0', 10);
             const sortCooldownRemaining = Math.max(0, AI_SORT_COOLDOWN_MS - (Date.now() - lastManualSortTime));
             if (sortCooldownRemaining > 0) {

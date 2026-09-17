@@ -324,6 +324,108 @@
             </div>
         </section>
 
+        <!-- 共同生活：問答、日記、回顧與白板共用同一個空間 -->
+        <section id="couple-life-hub" class="mb-8 scroll-mt-6 rounded-2xl border border-indigo-100 bg-slate-50/70 p-4 shadow-sm md:p-6" aria-labelledby="couple-life-title">
+            <div class="mb-5 flex flex-wrap items-start justify-between gap-4">
+                <div>
+                    <h2 id="couple-life-title" class="text-lg font-bold text-slate-800"><i class="fas fa-heart-pulse mr-2 text-rose-500" aria-hidden="true"></i>一起生活</h2>
+                    <p class="mt-1 max-w-2xl text-xs leading-5 text-slate-500">把每天想聊的、想記住的和想一起完成的事放在同一個地方。</p>
+                </div>
+                <div class="flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2" aria-label="我的代幣餘額">
+                    <i class="fas fa-coins text-amber-600" aria-hidden="true"></i>
+                    <span class="text-xs font-bold text-amber-900">我的代幣</span>
+                    <strong id="couple-token-balance" class="text-lg leading-none text-amber-700">0</strong>
+                </div>
+            </div>
+            <div id="couple-life-status" class="sr-only" aria-live="polite"></div>
+            <div class="grid gap-4 xl:grid-cols-2">
+                <article id="daily-question-panel" class="rounded-2xl border border-indigo-100 bg-indigo-50/60 p-4" aria-labelledby="daily-question-title">
+                    <div class="flex items-start gap-3">
+                        <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-indigo-600 shadow-sm"><i class="fas fa-comments" aria-hidden="true"></i></span>
+                        <div class="min-w-0">
+                            <h3 id="daily-question-title" class="text-sm font-bold text-indigo-950">每日共同問答</h3>
+                            <p class="mt-1 text-xs leading-5 text-indigo-800">兩個人都回答後，彼此的答案才會一起揭曉。完成回答可獲得 5 枚代幣。</p>
+                        </div>
+                    </div>
+                    <p id="daily-question-prompt" class="mt-4 rounded-xl bg-white px-3 py-3 text-sm font-semibold leading-6 text-slate-800">正在載入今天的問題…</p>
+                    <form id="daily-question-form" class="mt-3">
+                        <label for="daily-question-input" class="sr-only">今天的共同問答回答</label>
+                        <textarea id="daily-question-input" maxlength="500" rows="3" placeholder="寫下你的答案…" class="w-full resize-y rounded-xl border border-indigo-200 bg-white px-3 py-2 text-sm leading-6 text-slate-700 outline-none focus:ring-2 focus:ring-indigo-300"></textarea>
+                        <div class="mt-2 flex items-center justify-between gap-2">
+                            <p id="daily-question-status" class="text-xs text-slate-500" aria-live="polite"></p>
+                            <button id="daily-question-submit" type="submit" class="min-h-10 shrink-0 rounded-xl bg-indigo-600 px-4 py-2 text-xs font-bold text-white hover:bg-indigo-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300 disabled:cursor-not-allowed disabled:opacity-50">送出回答</button>
+                        </div>
+                    </form>
+                    <div id="daily-question-answers" class="mt-3 space-y-2" aria-live="polite"></div>
+                </article>
+
+                <article id="daily-diary-panel" class="rounded-2xl border border-rose-100 bg-rose-50/60 p-4" aria-labelledby="daily-diary-title">
+                    <div class="flex items-start gap-3">
+                        <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-rose-500 shadow-sm"><i class="fas fa-book-open" aria-hidden="true"></i></span>
+                        <div class="min-w-0">
+                            <h3 id="daily-diary-title" class="text-sm font-bold text-rose-950">每日小日記</h3>
+                            <p class="mt-1 text-xs leading-5 text-rose-800">每天一篇。對方可以用代幣解鎖，字數越多價格越高，解鎖後永久可讀。</p>
+                        </div>
+                    </div>
+                    <form id="daily-diary-form" class="mt-4">
+                        <div class="flex flex-wrap items-center justify-between gap-2">
+                            <label for="daily-diary-date" class="text-xs font-bold text-slate-700">日期</label>
+                            <input id="daily-diary-date" type="date" required class="rounded-lg border border-rose-200 bg-white px-2 py-1.5 text-xs text-slate-700 outline-none focus:ring-2 focus:ring-rose-300">
+                        </div>
+                        <label for="daily-diary-input" class="sr-only">今天的日記</label>
+                        <textarea id="daily-diary-input" maxlength="2000" rows="4" placeholder="今天想留給對方的一段話…" class="mt-2 w-full resize-y rounded-xl border border-rose-200 bg-white px-3 py-2 text-sm leading-6 text-slate-700 outline-none focus:ring-2 focus:ring-rose-300"></textarea>
+                        <div class="mt-2 flex flex-wrap items-center justify-between gap-2">
+                            <p class="text-xs text-slate-500"><span id="daily-diary-count">0/2000</span> · 解鎖價格 <strong id="daily-diary-price" class="text-rose-700">3 枚</strong></p>
+                            <button id="daily-diary-submit" type="submit" class="min-h-10 rounded-xl bg-rose-600 px-4 py-2 text-xs font-bold text-white hover:bg-rose-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-300 disabled:cursor-not-allowed disabled:opacity-50">保存日記</button>
+                        </div>
+                        <p id="daily-diary-status" class="mt-2 text-xs text-slate-500" aria-live="polite"></p>
+                    </form>
+                    <div id="daily-diary-list" class="mt-4 space-y-2" aria-live="polite"></div>
+                </article>
+
+                <article id="weekly-review-panel" class="rounded-2xl border border-violet-100 bg-violet-50/60 p-4" aria-labelledby="weekly-review-title">
+                    <div class="flex flex-wrap items-start justify-between gap-3">
+                        <div class="flex items-start gap-3">
+                            <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-violet-600 shadow-sm"><i class="fas fa-sparkles" aria-hidden="true"></i></span>
+                            <div class="min-w-0">
+                                <h3 id="weekly-review-title" class="text-sm font-bold text-violet-950">AI 每週回顧</h3>
+                                <p id="weekly-review-week" class="mt-1 text-xs leading-5 text-violet-800">正在讀取本週…</p>
+                            </div>
+                        </div>
+                        <button id="weekly-review-generate" type="button" class="min-h-10 rounded-xl bg-violet-600 px-4 py-2 text-xs font-bold text-white hover:bg-violet-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-300 disabled:cursor-not-allowed disabled:opacity-50">生成本週回顧</button>
+                    </div>
+                    <p id="weekly-review-status" class="mt-3 text-xs text-slate-500" aria-live="polite"></p>
+                    <div id="weekly-review-content" class="mt-3 rounded-xl bg-white/80 px-3 py-3"></div>
+                    <p class="mt-3 text-[11px] leading-5 text-violet-700"><i class="fas fa-shield-halved mr-1" aria-hidden="true"></i>回顧使用你在設定中選擇的 Gemini Key；只會送出這個共同空間中目前可讀的資料。</p>
+                </article>
+
+                <article id="shared-whiteboard-panel" class="rounded-2xl border border-sky-100 bg-sky-50/60 p-4" aria-labelledby="shared-whiteboard-title">
+                    <div class="flex items-start gap-3">
+                        <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-sky-600 shadow-sm"><i class="fas fa-note-sticky" aria-hidden="true"></i></span>
+                        <div class="min-w-0">
+                            <h3 id="shared-whiteboard-title" class="text-sm font-bold text-sky-950">共享白板</h3>
+                            <p class="mt-1 text-xs leading-5 text-sky-800">共同保存想聊的話題、自由文字和小 Todo；兩個人看到的是同一塊白板。</p>
+                        </div>
+                    </div>
+                    <div class="mt-4 grid gap-2 sm:grid-cols-2">
+                        <form id="shared-whiteboard-note-form" class="flex gap-2">
+                            <label for="shared-whiteboard-note-input" class="sr-only">新增白板筆記</label>
+                            <input id="shared-whiteboard-note-input" type="text" maxlength="500" placeholder="想聊的話題…" class="min-w-0 flex-1 rounded-xl border border-sky-200 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-sky-300">
+                            <button type="submit" class="rounded-xl bg-sky-600 px-3 py-2 text-xs font-bold text-white hover:bg-sky-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300" aria-label="新增白板筆記"><i class="fas fa-plus" aria-hidden="true"></i></button>
+                        </form>
+                        <form id="shared-whiteboard-todo-form" class="flex gap-2">
+                            <label for="shared-whiteboard-todo-input" class="sr-only">新增共同 Todo</label>
+                            <input id="shared-whiteboard-todo-input" type="text" maxlength="500" placeholder="一起完成的 Todo…" class="min-w-0 flex-1 rounded-xl border border-sky-200 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-sky-300">
+                            <button type="submit" class="rounded-xl bg-indigo-600 px-3 py-2 text-xs font-bold text-white hover:bg-indigo-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300" aria-label="新增共同 Todo"><i class="fas fa-check" aria-hidden="true"></i></button>
+                        </form>
+                    </div>
+                    <p id="shared-whiteboard-status" class="mt-2 text-xs text-slate-500" aria-live="polite"></p>
+                    <div id="shared-whiteboard-list" class="mt-3 space-y-2" aria-live="polite"></div>
+                </article>
+            </div>
+            <p id="couple-token-status" class="mt-4 text-xs text-slate-500" aria-live="polite">登入後會建立你的個人代幣錢包。</p>
+        </section>
+
         <!-- 無延遲新增輸入框 (加入圖片預覽區) -->
         <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-2 mb-8 flex flex-col sticky top-4 z-40 group focus-within:ring-2 focus-within:ring-indigo-200 transition-all">
             <div class="flex flex-col md:flex-row gap-2">
@@ -767,13 +869,19 @@
             <button id="close-category-modal-btn" type="button" aria-label="關閉分類設定" class="absolute top-4 right-4 text-slate-400 hover:text-slate-600 w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center"><i class="fas fa-times" aria-hidden="true"></i></button>
         </div>
     </div>
-    <div id="settings-modal" class="hidden fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+    <div id="settings-modal" class="hidden fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="settings-modal-title">
         <div class="bg-white rounded-2xl w-full max-w-lg p-6 shadow-xl max-h-[90vh] overflow-y-auto custom-scrollbar">
             <div class="flex justify-between items-center mb-4">
-                <h3 class="text-lg font-bold text-slate-800 flex items-center"><i class="fas fa-cog text-indigo-500 mr-2 text-xl"></i> 系統設定</h3>
+                <h3 id="settings-modal-title" class="text-lg font-bold text-slate-800 flex items-center"><i class="fas fa-cog text-indigo-500 mr-2 text-xl"></i> 系統設定</h3>
                         <button id="close-modal-btn" type="button" aria-label="關閉設定" class="text-slate-400 hover:text-slate-600"><i class="fas fa-times" aria-hidden="true"></i></button>
             </div>
 
+            <div id="settings-tabs" class="mb-5 grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1" role="tablist" aria-label="設定分類">
+                <button id="settings-tab-space" type="button" role="tab" aria-controls="settings-panel-space" aria-selected="true" data-settings-tab="space" class="min-h-10 rounded-lg bg-white px-3 text-sm font-bold text-rose-700 shadow-sm">共同空間</button>
+                <button id="settings-tab-ai" type="button" role="tab" aria-controls="settings-panel-ai" aria-selected="false" data-settings-tab="ai" class="min-h-10 rounded-lg px-3 text-sm font-bold text-slate-600 hover:bg-white/70">AI 與研讀</button>
+            </div>
+
+            <div id="settings-panel-space" data-settings-panel="space" role="tabpanel" aria-labelledby="settings-tab-space">
             <section id="space-settings-section" class="mb-5 rounded-2xl border border-rose-200 bg-gradient-to-br from-rose-50 to-orange-50 p-4" aria-labelledby="space-settings-title">
                 <div class="flex items-start gap-3">
                     <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-rose-500 shadow-sm"><i class="fas fa-heart"></i></span>
@@ -817,7 +925,9 @@
                 </div>
                 <div id="space-action-status" class="mt-3 text-xs leading-5 text-slate-600" aria-live="polite"></div>
             </section>
-            
+            </div>
+
+            <div id="settings-panel-ai" data-settings-panel="ai" role="tabpanel" aria-labelledby="settings-tab-ai" hidden>
             <div class="mb-4">
                 <label class="block text-sm font-semibold text-slate-700 mb-2">Google Gemini API Key</label>
                 <div class="space-y-2 mb-1">
@@ -1007,7 +1117,8 @@
                 <p class="text-xs text-slate-500">貼上文字或從外部分享內容進來時，若網址後面緊接著文字(沒有空格或換行)，自動在網址後方補一個換行，避免網址跟後面的文字黏在一起導致連結卡片或標題辨識失敗。預設開啟。</p>
             </div>
 
-            <button id="save-settings-btn" class="w-full bg-slate-800 text-white py-2 rounded-lg font-semibold hover:bg-slate-700 transition-colors">儲存設定</button>
+            <button id="save-settings-btn" class="w-full bg-slate-800 text-white py-2 rounded-lg font-semibold hover:bg-slate-700 transition-colors">儲存 AI 與研讀設定</button>
+            </div>
         </div>
     </div>
 

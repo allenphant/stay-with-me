@@ -140,5 +140,5 @@ test('shared planner is the first home section and a first-level sidebar destina
     assert.ok(plannerStart < inboxStart, 'planner should precede the inbox');
     assert.match(app, /createSidebarLink\('couple-planner', 'fas fa-calendar-days', '共同計畫'\)/);
     assert.match(app, /targetId === 'couple-planner'/);
-    assert.match(app, /querySelectorAll\('\.category-wrapper, #couple-planner'\)/);
+    assert.match(app, /querySelectorAll\('\.category-wrapper, #couple-planner, #couple-life-hub'\)/);
 });

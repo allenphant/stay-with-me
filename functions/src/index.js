@@ -39,6 +39,12 @@ const {
   normalizeEmail,
   normalizeSpaceName,
 } = require("./spaces");
+const {
+  calculateDiaryPrice,
+  normalizeDateKey,
+  questionForDate,
+  TOKEN_POLICY,
+} = require("./couple-feature-policy");
 
 initializeApp();
 
@@ -95,6 +101,70 @@ function membershipRef(uid, spaceId) {
 
 function inviteRef(inviteCode) {
   return db.doc(`artifacts/${APP_ID}/spaceInvites/${inviteCode}`);
+}
+
+function coupleSpaceRoot(spaceId) {
+  return db.doc(`artifacts/${APP_ID}/users/${spaceId}`);
+}
+
+function tokenWalletRef(spaceId, uid) {
+  return coupleSpaceRoot(spaceId).collection("tokens").collection("wallets").doc(uid);
+}
+
+function tokenLedgerRef(spaceId, ledgerId) {
+  return coupleSpaceRoot(spaceId).collection("tokens").collection("ledger").doc(ledgerId);
+}
+
+function dailyQuestionRef(spaceId, dateKey) {
+  return coupleSpaceRoot(spaceId).collection("dailyQuestions").doc(dateKey);
+}
+
+function diaryRef(spaceId, diaryId) {
+  return coupleSpaceRoot(spaceId).collection("diaries").doc(diaryId);
+}
+
+function todayDateKey(now = Date.now()) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Taipei",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date(now));
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
+function isRecentDateKey(dateKey, daysBack = 7) {
+  const normalized = normalizeDateKey(dateKey);
+  if (!normalized) return false;
+  const today = todayDateKey();
+  const todayTime = Date.parse(`${today}T00:00:00Z`);
+  const requestedTime = Date.parse(`${normalized}T00:00:00Z`);
+  return requestedTime <= todayTime && requestedTime >= todayTime - daysBack * 24 * 60 * 60 * 1000;
+}
+
+function requireRecentDateKey(value, field = "dateKey") {
+  const normalized = normalizeDateKey(value);
+  if (!normalized || !isRecentDateKey(normalized)) {
+    throw new HttpsError("invalid-argument", `${field} 必須是最近 7 天內的日期。`);
+  }
+  return normalized;
+}
+
+function normalizeAnswer(value) {
+  const answer = String(value || "").trim();
+  if (!answer || answer.length > 500) {
+    throw new HttpsError("invalid-argument", "回答請填寫 1～500 字。");
+  }
+  return answer;
+}
+
+function normalizeDiaryText(value) {
+  const text = String(value || "").trim();
+  if (!text || text.length > 2_000) {
+    throw new HttpsError("invalid-argument", "日記請填寫 1～2,000 字。");
+  }
+  return text;
 }
 
 async function requireSpaceMember(spaceId, uid) {
@@ -507,6 +577,301 @@ exports.renameSpace = onCall({
   });
   await batch.commit();
   return {ok: true, spaceId, name};
+});
+
+exports.ensureTokenWallet = onCall({
+  region: REGION,
+  memory: "256MiB",
+  minInstances: 0,
+  maxInstances: 1,
+}, async (request) => {
+  const uid = requireAuth(request);
+  const spaceId = assertDocumentPart(request.data?.spaceId || uid, "spaceId");
+  await requireSpaceMember(spaceId, uid);
+  const walletRef = tokenWalletRef(spaceId, uid);
+  const welcomeLedgerRef = tokenLedgerRef(spaceId, `welcome_${uid}`);
+  return db.runTransaction(async (transaction) => {
+    const walletSnapshot = await transaction.get(walletRef);
+    if (walletSnapshot.exists) {
+      return {
+        balance: Math.max(0, Number(walletSnapshot.data().balance || 0)),
+        initialized: false,
+      };
+    }
+    const now = FieldValue.serverTimestamp();
+    transaction.set(walletRef, {
+      uid,
+      balance: TOKEN_POLICY.welcomeGrant,
+      totalEarned: TOKEN_POLICY.welcomeGrant,
+      totalSpent: 0,
+      welcomeGrantedAt: now,
+      updatedAt: now,
+    });
+    transaction.set(welcomeLedgerRef, {
+      uid,
+      type: "welcome_grant",
+      amount: TOKEN_POLICY.welcomeGrant,
+      createdAt: now,
+    });
+    return {balance: TOKEN_POLICY.welcomeGrant, initialized: true};
+  });
+});
+
+exports.submitDailyAnswer = onCall({
+  region: REGION,
+  memory: "256MiB",
+  minInstances: 0,
+  maxInstances: 1,
+}, async (request) => {
+  const uid = requireAuth(request);
+  const spaceId = assertDocumentPart(request.data?.spaceId || uid, "spaceId");
+  await requireSpaceMember(spaceId, uid);
+  const dateKey = requireRecentDateKey(request.data?.dateKey);
+  const answer = normalizeAnswer(request.data?.answer);
+  const questionRef = dailyQuestionRef(spaceId, dateKey);
+  const answerRef = questionRef.collection("answers").doc(uid);
+  const walletRef = tokenWalletRef(spaceId, uid);
+  const rewardLedgerRef = tokenLedgerRef(spaceId, `daily_answer_${dateKey}_${uid}`);
+
+  return db.runTransaction(async (transaction) => {
+    const [questionSnapshot, answerSnapshot, walletSnapshot, rewardLedgerSnapshot] = await Promise.all([
+      transaction.get(questionRef),
+      transaction.get(answerRef),
+      transaction.get(walletRef),
+      transaction.get(rewardLedgerRef),
+    ]);
+    const now = FieldValue.serverTimestamp();
+    const question = questionForDate(dateKey);
+    const existingWallet = walletSnapshot.exists ? walletSnapshot.data() : {};
+    const initialGrant = walletSnapshot.exists ? 0 : TOKEN_POLICY.welcomeGrant;
+    const rewardGranted = !rewardLedgerSnapshot.exists;
+    const reward = rewardGranted ? TOKEN_POLICY.dailyAnswerReward : 0;
+    const balance = Math.max(0, Number(existingWallet.balance || 0)) + initialGrant + reward;
+
+    transaction.set(questionRef, {
+      dateKey,
+      prompt: question,
+      createdAt: questionSnapshot.exists ? questionSnapshot.data().createdAt || now : now,
+      updatedAt: now,
+    }, {merge: true});
+    transaction.set(answerRef, {
+      uid,
+      answer,
+      answeredAt: now,
+      updatedAt: now,
+    }, {merge: true});
+    if (initialGrant || rewardGranted) {
+      transaction.set(walletRef, {
+        uid,
+        balance,
+        totalEarned: Number(existingWallet.totalEarned || 0) + initialGrant + reward,
+        totalSpent: Number(existingWallet.totalSpent || 0),
+        ...(initialGrant ? {welcomeGrantedAt: now} : {}),
+        updatedAt: now,
+      }, {merge: true});
+    }
+    if (initialGrant) {
+      transaction.set(tokenLedgerRef(spaceId, `welcome_${uid}`), {
+        uid,
+        type: "welcome_grant",
+        amount: TOKEN_POLICY.welcomeGrant,
+        createdAt: now,
+      }, {merge: true});
+    }
+    if (rewardGranted) {
+      transaction.set(rewardLedgerRef, {
+        uid,
+        type: "daily_answer",
+        dateKey,
+        amount: TOKEN_POLICY.dailyAnswerReward,
+        createdAt: now,
+      });
+    }
+    return {dateKey, rewardGranted, balance, answered: true};
+  });
+});
+
+exports.saveDailyDiary = onCall({
+  region: REGION,
+  memory: "256MiB",
+  minInstances: 0,
+  maxInstances: 1,
+}, async (request) => {
+  const uid = requireAuth(request);
+  const spaceId = assertDocumentPart(request.data?.spaceId || uid, "spaceId");
+  await requireSpaceMember(spaceId, uid);
+  const dateKey = requireRecentDateKey(request.data?.dateKey);
+  const text = normalizeDiaryText(request.data?.text);
+  const diaryId = `${dateKey}_${uid}`;
+  const targetRef = diaryRef(spaceId, diaryId);
+  const contentRef = targetRef.collection("content").doc("private");
+  const rewardLedgerRef = tokenLedgerRef(spaceId, `diary_write_${diaryId}`);
+  const walletRef = tokenWalletRef(spaceId, uid);
+
+  return db.runTransaction(async (transaction) => {
+    const [diarySnapshot, walletSnapshot, rewardLedgerSnapshot] = await Promise.all([
+      transaction.get(targetRef),
+      transaction.get(walletRef),
+      transaction.get(rewardLedgerRef),
+    ]);
+    const now = FieldValue.serverTimestamp();
+    const price = calculateDiaryPrice(text.length);
+    const existingDiary = diarySnapshot.exists ? diarySnapshot.data() : {};
+    if (Array.isArray(existingDiary.unlockedByUids) && existingDiary.unlockedByUids.length > 0) {
+      throw new HttpsError("failed-precondition", "這篇日記已被解鎖，不能再修改。");
+    }
+    const existingWallet = walletSnapshot.exists ? walletSnapshot.data() : {};
+    const initialGrant = walletSnapshot.exists ? 0 : TOKEN_POLICY.welcomeGrant;
+    const rewardGranted = !rewardLedgerSnapshot.exists;
+    const reward = rewardGranted ? TOKEN_POLICY.dailyDiaryReward : 0;
+    const balance = Math.max(0, Number(existingWallet.balance || 0)) + initialGrant + reward;
+
+    transaction.set(targetRef, {
+      dateKey,
+      authorUid: uid,
+      charCount: text.length,
+      price,
+      unlockedByUids: Array.isArray(existingDiary.unlockedByUids) ? existingDiary.unlockedByUids : [],
+      createdAt: existingDiary.createdAt || now,
+      updatedAt: now,
+    }, {merge: true});
+    transaction.set(contentRef, {
+      text,
+      updatedAt: now,
+    }, {merge: true});
+    if (initialGrant || rewardGranted) {
+      transaction.set(walletRef, {
+        uid,
+        balance,
+        totalEarned: Number(existingWallet.totalEarned || 0) + initialGrant + reward,
+        totalSpent: Number(existingWallet.totalSpent || 0),
+        ...(initialGrant ? {welcomeGrantedAt: now} : {}),
+        updatedAt: now,
+      }, {merge: true});
+    }
+    if (initialGrant) {
+      transaction.set(tokenLedgerRef(spaceId, `welcome_${uid}`), {
+        uid,
+        type: "welcome_grant",
+        amount: TOKEN_POLICY.welcomeGrant,
+        createdAt: now,
+      }, {merge: true});
+    }
+    if (rewardGranted) {
+      transaction.set(rewardLedgerRef, {
+        uid,
+        type: "daily_diary",
+        dateKey,
+        amount: TOKEN_POLICY.dailyDiaryReward,
+        createdAt: now,
+      });
+    }
+    return {diaryId, dateKey, price, rewardGranted, balance};
+  });
+});
+
+exports.unlockDailyDiary = onCall({
+  region: REGION,
+  memory: "256MiB",
+  minInstances: 0,
+  maxInstances: 1,
+}, async (request) => {
+  const uid = requireAuth(request);
+  const spaceId = assertDocumentPart(request.data?.spaceId || uid, "spaceId");
+  await requireSpaceMember(spaceId, uid);
+  const diaryId = assertDocumentPart(request.data?.diaryId, "diaryId");
+  const targetRef = diaryRef(spaceId, diaryId);
+  const unlockRef = targetRef.collection("unlocks").doc(uid);
+  const walletRef = tokenWalletRef(spaceId, uid);
+  const ledgerRef = tokenLedgerRef(spaceId, `diary_unlock_${diaryId}_${uid}`);
+
+  return db.runTransaction(async (transaction) => {
+    const [diarySnapshot, unlockSnapshot, walletSnapshot, ledgerSnapshot] = await Promise.all([
+      transaction.get(targetRef),
+      transaction.get(unlockRef),
+      transaction.get(walletRef),
+      transaction.get(ledgerRef),
+    ]);
+    if (!diarySnapshot.exists) throw new HttpsError("not-found", "找不到這篇日記。");
+    const diary = diarySnapshot.data();
+    if (diary.authorUid === uid) {
+      throw new HttpsError("invalid-argument", "作者可以直接查看自己的日記。");
+    }
+    if (unlockSnapshot.exists) {
+      return {
+        unlocked: true,
+        charged: false,
+        balance: Math.max(0, Number(walletSnapshot.data()?.balance || 0)),
+        diaryId,
+      };
+    }
+    const price = calculateDiaryPrice(diary.charCount);
+    const wallet = walletSnapshot.exists ? walletSnapshot.data() : {};
+    const initialGrant = walletSnapshot.exists ? 0 : TOKEN_POLICY.welcomeGrant;
+    const currentBalance = Math.max(0, Number(wallet.balance || 0)) + initialGrant;
+    if (currentBalance < price) {
+      throw new HttpsError("failed-precondition", `代幣不足，需要 ${price} 枚，目前有 ${currentBalance} 枚。`);
+    }
+    const balance = currentBalance - price;
+    const now = FieldValue.serverTimestamp();
+    transaction.set(walletRef, {
+      uid,
+      balance,
+      totalEarned: Number(wallet.totalEarned || 0) + initialGrant,
+      totalSpent: Number(wallet.totalSpent || 0) + price,
+      ...(initialGrant ? {welcomeGrantedAt: now} : {}),
+      updatedAt: now,
+    }, {merge: true});
+    if (initialGrant) {
+      transaction.set(tokenLedgerRef(spaceId, `welcome_${uid}`), {
+        uid,
+        type: "welcome_grant",
+        amount: TOKEN_POLICY.welcomeGrant,
+        createdAt: now,
+      }, {merge: true});
+    }
+    transaction.set(unlockRef, {
+      uid,
+      price,
+      unlockedAt: now,
+    });
+    transaction.set(targetRef, {
+      unlockedByUids: FieldValue.arrayUnion(uid),
+      updatedAt: now,
+    }, {merge: true});
+    transaction.set(ledgerRef, {
+      uid,
+      type: "diary_unlock",
+      diaryId,
+      amount: -price,
+      createdAt: now,
+    });
+    return {unlocked: true, charged: true, balance, price, diaryId};
+  });
+});
+
+exports.saveWeeklyReview = onCall({
+  region: REGION,
+  memory: "256MiB",
+  minInstances: 0,
+  maxInstances: 1,
+}, async (request) => {
+  const uid = requireAuth(request);
+  const spaceId = assertDocumentPart(request.data?.spaceId || uid, "spaceId");
+  await requireSpaceMember(spaceId, uid);
+  const weekKey = assertDocumentPart(request.data?.weekKey, "weekKey");
+  const content = String(request.data?.content || "").trim();
+  if (!content || content.length > 12_000) {
+    throw new HttpsError("invalid-argument", "每週回顧內容不可為空，且最多 12,000 字。");
+  }
+  const reviewRef = coupleSpaceRoot(spaceId).collection("weeklyReviews").doc(weekKey);
+  await reviewRef.set({
+    weekKey,
+    content,
+    generatedByUid: uid,
+    updatedAt: FieldValue.serverTimestamp(),
+  }, {merge: true});
+  return {ok: true, weekKey};
 });
 
 exports.updateResearchAutomation = onCall({

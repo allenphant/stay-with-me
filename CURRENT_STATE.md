@@ -3,6 +3,23 @@
 > **更新時間**：2026-09-17
 > **專案核心**：以 Vanilla JS、Firebase Authentication／Firestore／Functions 與 GitHub Pages 打造的雙人共編生活空間。
 
+## 2026-09-17 共同生活功能批次
+
+本批已完成除「天竺鼠／飼料商店」以外的產品待辦，程式碼與回歸測試完成；前端可由 GitHub Pages 發布，Functions／Firestore rules 仍需 Firebase CLI 重新登入後部署。
+
+* 新增 `couple-features.mjs` 與首頁「一起生活」區塊：每日共同問答、每日小日記、AI 每週回顧、共享白板與個人代幣餘額。
+* 代幣只由 Callable Functions 交易：首次使用 20 枚、每日回答 +5、每日寫日記 +3；錢包與 ledger 禁止客戶端寫入。
+* 日記以每人／每日一篇保存；每 20 字 1 枚，最低 3、最高 30；第一次解鎖後永久可讀且不可再編輯。私人內容 rules 只允許作者或已有 unlock 文件的成員讀取。
+* 共享白板使用 `whiteboardBlocks` 結構化資料，支援 note／todo、即時更新與刪除；本輪不與 Planner 待辦同步。
+* `settings-modal` 已拆成「共同空間／AI 與研讀」兩個 tab；AI 缺 Key 時會直接開在 AI 分頁。
+* 新增 `functions/src/couple-feature-policy.js`、Callable Functions 與 Firestore rules；本機 `npm test` 目前 22/22 通過，JS syntax check 與 `git diff --check` 通過。
+
+### 本批部署狀態
+
+* Firebase CLI 嘗試部署 rules 時回覆 `Authentication Error: Your credentials are no longer valid. Please run firebase login --reauth`，因此 Functions／rules 尚未更新到正式 Firebase。需要使用者重新登入 Firebase CLI 後，再執行既定部署指令。
+* GitHub Pages 前端尚未由本批 commit 觸發；推送後正式站位置仍為 `https://allenphant.github.io/stay-with-me/`。
+* 真人正式站驗收仍由使用者執行；目前 CUA 沒有可用瀏覽器或 App surface，未代替使用者宣稱 UI 驗收完成。
+
 ## 本次對話目標
 
 * 依 `TODO.md` 從共同計畫主軸繼續完成不需要產品決策的技術待辦。
