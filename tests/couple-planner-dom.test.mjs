@@ -11,7 +11,12 @@ test('planner controls referenced by the app exist exactly once', () => {
         'planner-month-jump-container', 'planner-month-jump', 'planner-month-input',
         'planner-month-cancel', 'planner-prev-month', 'planner-next-month',
         'planner-today', 'planner-upcoming', 'planner-calendar', 'planner-wishes',
+        'planner-calendar-shell', 'planner-agenda', 'planner-agenda-title',
+        'planner-agenda-date', 'planner-agenda-prev', 'planner-agenda-next',
+        'planner-agenda-list', 'planner-agenda-add', 'planner-collaborators',
+        'planner-last-synced', 'planner-sync-status', 'planner-sync-retry',
         'anniversary-form', 'anniversary-title', 'anniversary-date', 'anniversary-list',
+        'anniversary-submit', 'anniversary-cancel-edit',
         'add-plan-fields', 'add-plan-kind', 'add-plan-date',
         'edit-plan-fields', 'edit-plan-kind', 'edit-plan-date',
         'planner-entry-type', 'planner-entry-category', 'planner-entry-plan-fields',
@@ -27,10 +32,23 @@ test('planner controls referenced by the app exist exactly once', () => {
     }
 });
 
-test('anniversary form uses native required fields and the calendar can scroll on mobile', () => {
+test('anniversary form uses native required fields and mobile has a selected-date agenda', () => {
     assert.match(html, /id="anniversary-title"[^>]*\brequired\b/);
     assert.match(html, /id="anniversary-date"[^>]*\brequired\b/);
-    assert.match(html, /class="overflow-x-auto pb-2"><div id="planner-calendar"/);
+    assert.match(html, /id="planner-calendar-shell"[^>]*\bmd:block/);
+    assert.match(html, /id="planner-agenda"[^>]*\bmd:hidden/);
+    assert.match(html, /id="planner-agenda-date"[^>]*type="date"/);
+    assert.match(html, /id="planner-agenda-list"[^>]*aria-live="polite"/);
+});
+
+test('planner exposes sync, collaborators, last-synced metadata and retry controls', () => {
+    assert.match(html, /id="planner-collaborators"/);
+    assert.match(html, /id="planner-last-synced"/);
+    assert.match(html, /id="planner-sync-status"[^>]*aria-live="polite"/);
+    assert.match(html, /id="planner-sync-retry"[^>]*\bhidden\b/);
+    assert.match(app, /includeMetadataChanges: true/);
+    assert.match(app, /retryPlannerSync/);
+    assert.match(app, /plannerSnapshotState/);
 });
 
 test('unified planner editor has required title/date and dialog semantics', () => {
@@ -55,6 +73,52 @@ test('calendar day cells open scheduling while existing entries retain their act
     assert.match(app, /event\.target\.closest\('\.planner-entry'\)/);
     assert.match(app, /event\.target\.closest\('\.planner-calendar-day'\)/);
     assert.match(app, /openPlannerEntryModal\(null, '', dayCell\.dataset\.date, 'event'\)/);
+    assert.match(app, /calendar-anniversary-entry/);
+    assert.match(app, /planner-agenda-date/);
+});
+
+test('planner metadata keeps creator information visible in agenda and new records', () => {
+    assert.match(app, /建立者：\$\{escapeHtml\(creator\)\}/);
+    assert.match(app, /createdByUid: currentUser\.uid/);
+    assert.match(app, /edit-anniversary/);
+    assert.match(app, /historyManager\.push\(\{/);
+});
+
+test('primary text inputs, keys, contenteditable and icon controls have accessible names', () => {
+    assert.match(html, /id="idea-input"[^>]*aria-label="快速新增內容"/);
+    assert.match(html, /id="cat-prompt-rule-input"[^>]*aria-label="分類規則"/);
+    assert.match(html, /id="api-key-input"[^>]*aria-label="Google Gemini API Key"/);
+    assert.match(html, /id="mistral-api-key-input"[^>]*aria-label="Mistral API Key"/);
+    assert.match(html, /id="jina-api-key-input"[^>]*aria-label="Jina Reader API Key"/);
+    assert.match(html, /id="imgbb-key-input"[^>]*aria-label="ImgBB API Key"/);
+    assert.match(html, /id="editor-title"[^>]*role="textbox"[^>]*aria-label="卡片標題"/);
+    assert.match(html, /id="image-preview-img"[^>]*alt="待上傳圖片預覽"/);
+    assert.match(html, /prefers-reduced-motion/);
+    assert.match(app, /aria-label="複製卡片"/);
+    assert.match(app, /請先登入，才能新增共同內容/);
+});
+
+test('fixed CDN assets use SRI and documented runtime exceptions', () => {
+    const fixedScripts = [
+        'https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js',
+        'https://cdn.jsdelivr.net/npm/@editorjs/editorjs@2.31.6',
+        'https://cdn.jsdelivr.net/npm/@editorjs/header@2.8.9',
+        'https://cdn.jsdelivr.net/npm/@editorjs/list@2.0.9',
+        'https://cdn.jsdelivr.net/npm/@editorjs/checklist@1.6.0',
+        'https://cdn.jsdelivr.net/npm/@editorjs/quote@2.7.6',
+        'https://cdn.jsdelivr.net/npm/@editorjs/marker@1.4.0',
+        'https://cdn.jsdelivr.net/npm/@editorjs/inline-code@1.5.2',
+        'https://cdn.jsdelivr.net/npm/@editorjs/code@2.9.4',
+        'https://cdn.jsdelivr.net/npm/@editorjs/delimiter@1.4.2',
+        'https://cdn.jsdelivr.net/npm/editorjs-undo@2.0.28'
+    ];
+    for (const source of fixedScripts) {
+        const escapedSource = source.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        assert.match(html, new RegExp(`<script src="${escapedSource}" integrity="sha384-[^"]+" crossorigin="anonymous" defer></script>`));
+    }
+    assert.match(html, /font-awesome\/6\.4\.0\/css\/all\.min\.css[^>]*integrity="sha384-[^"]+"[^>]*crossorigin="anonymous"/);
+    assert.match(html, /Tailwind Play CDN is runtime-generated/);
+    assert.match(html, /legacy helper is unversioned upstream/);
 });
 
 test('planner routes all plan entry creation and editing through one modal', () => {

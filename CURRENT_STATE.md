@@ -1,12 +1,12 @@
-# 共同計畫首頁主軸已發布，等待正式站驗收（已完成／待驗收）
+# 共同計畫首頁主軸已發布，技術待辦完成一批／等待正式站驗收與產品決策
 
-> **更新時間**：2026-09-14 16:31
+> **更新時間**：2026-09-17
 > **專案核心**：以 Vanilla JS、Firebase Authentication／Firestore／Functions 與 GitHub Pages 打造的雙人共編生活空間。
 
 ## 本次對話目標
 
-* 完成 `wrap-up` 第一階段：保存本次交接快照、更新專案偏好、整理目前狀態，並列出待使用者核准的整併項目。
-* 延續本次產品工作：將共同計畫放在首頁主軸，維持 `TODO.md` 作為產品待辦文件；使用者希望改動完成測試後直接發布到正式站驗收，不以本機瀏覽器驗收作為前提。
+* 依 `TODO.md` 從共同計畫主軸繼續完成不需要產品決策的技術待辦。
+* 使用者希望改動完成測試後直接推送到正式站驗收，不以本機瀏覽器驗收作為前提；正式站真人驗收仍由使用者執行。
 
 ## 已完成任務
 
@@ -33,6 +33,16 @@
 * 行程存於目前空間 `artifacts/{appId}/users/{spaceId}/calendarEvents/{id}`，沿用既有空間成員 Firestore rules；本次未更動 rules 或 Functions。無重複行程、跨日行程、關閉 App 後提醒或外部行事曆同步，留待後續需求確認。
 * 相關檔案：`app.js`、`index.html`、`couple-planner.mjs`、`tests/couple-planner.test.mjs`、`tests/couple-planner-dom.test.mjs`。日曆互動版本由 [PR #7](https://github.com/allenphant/stay-with-me/pull/7) squash 合併，commit `336033fe0e7a5edaa72a3b69bc1d5ef126a7d060`；單純行程版本由 [PR #5](https://github.com/allenphant/stay-with-me/pull/5) 合併，發布 commit `9b4946a25007e676677924b5e49d9afa587ba6ee`。
 
+### 本批共同計畫技術補強
+
+* Planner 在手機版改成選定日期的 agenda：可用日期欄位、前後一天、空白日期新增；桌面保留月曆格，且點擊空白日期格仍可排行程。
+* Planner 顯示共編者、最近同步時間與同步狀態；Firestore snapshot 支援同步中／已同步／同步失敗，失敗時可按重試並重新建立 listener。
+* 行程與紀念日都有建立者資訊；行程刪除與紀念日刪除提供短暫 undo，紀念日可在原表單直接編輯。
+* 未登入新增／編輯、背景同步失敗與待辦勾選失敗都有明確提示及可復原行為；新增紀錄寫入 `createdByUid` 供 Planner 顯示建立者。
+* 補齊主要 textarea、API key、contenteditable、icon-only 控制與圖片預覽的可及性標籤；加入全域 keyboard `focus-visible` 樣式、`prefers-reduced-motion` 與窄版／200% zoom 下的 agenda 佈局。
+* 固定版本 CDN 套件已補 SRI、`crossorigin` 與 `defer`；Tailwind Play CDN 為 runtime-generated，DragDropTouch 仍是上游未固定版本，兩者都在 `index.html` 留有明確例外說明。
+* `npm test` 目前 20／20 通過，另通過 `node --check app.js`、`node --check couple-planner.mjs` 與 `git diff --check`；DOM 測試已把 CDN SRI、agenda、同步狀態與可及性契約納入回歸。
+
 ### 共同計畫第一階段與紀念日
 
 * 已加入待辦類型（待辦／願望／約會）、可選日期、共享月曆、未排期願望入口，以及每年重複的紀念日與 App 內未來 30 天提示。舊待辦未新增欄位時仍視為一般待辦；願望改成約會只更新原卡片，不複製資料。
@@ -57,8 +67,10 @@
 
 * 目前無程式碼 blocker。待真人在正式站驗收首頁共同計畫順序、側欄跳轉、四種項目共用表單、點擊空白日期格新增，以及中央年月快速跳轉。
 * 雙帳號邀請／共同空間真人驗證仍依使用者決定延後；這不阻擋單帳號 UI 與日曆功能驗收。
-* 尚未實作的產品功能包括每日共同問答、代幣與天竺鼠、AI 每週回顧，以及每日小日記；產品優先順序以 `TODO.md` 為準。
+* 尚未實作的產品功能包括每日共同問答、代幣與天竺鼠、AI 每週回顧、每日小日記，以及新提出的共享白板；產品優先順序以 `TODO.md` 為準。
 * 日記功能卡在安全規格決策：計價公式、最低／最高代幣、編輯後價格、錢包歸屬、解鎖紀錄與退款／重複解鎖行為尚未定案。
+* 共享白板卡在第一版互動模型：需先決定結構化區塊白板或自由拖拉無限畫布、白板數量與即時衝突處理，以及白板 Todo 是否同步到共同計畫；在這些決策前不先猜規格實作。
+* 設定 modal 拆分涉及資訊架構與優先層級，尚未自行改版。
 * 若要再驗證雲端研讀重試，必須用隔離 namespace 加定向 Cloud Task，驗證 `failed_terminal → manual_retry`、usage 不增加與兩輪上限，不可啟動 production Scheduler。
 * GitHub App／本機 `gh` 曾沒有可用寫入權限，但直接 `git push` 可用，不阻擋既定發布方式；`npm audit --omit=dev` 當時為 9 個 moderate、0 high／critical，皆來自既有 Firebase 依賴鏈，未執行可能造成 Firebase 套件變動的自動修復。
 

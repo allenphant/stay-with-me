@@ -118,7 +118,20 @@
         let currentCalendarEvents = [];
         let unsubscribeCalendarEvents = null;
         let activePlannerEntry = null;
+        let activeAnniversaryId = null;
         let plannerMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+        let plannerSelectedDate = dateKey(new Date().getFullYear(), new Date().getMonth() + 1, new Date().getDate());
+        let plannerLastSyncedAt = null;
+        let plannerSyncRetryBusy = false;
+        const plannerSyncState = {
+            anniversaries: 'syncing',
+            calendarEvents: 'syncing',
+            plans: 'syncing'
+        };
+        const plannerSyncErrors = new Map();
+        const plannerTodoCollectionIds = new Set();
+        const plannerTodoSyncStates = new Map();
+        const plannerCategoryUnsubscribes = new Map();
         const selectedTagFilterIds = new Set();
         const selectedResearchBackfillKeys = new Set();
         let tagMatchMode = 'all';
@@ -313,39 +326,263 @@
             showToast('已刪除分類');
         }
 
+        function cleanupPlannerCategoryListeners() {
+            plannerCategoryUnsubscribes.forEach(unsubscribe => unsubscribe?.());
+            plannerCategoryUnsubscribes.clear();
+        }
+
+        function setupPlannerCollectionListeners(spaceId) {
+            unsubscribeAnniversaries?.();
+            unsubscribeCalendarEvents?.();
+            currentAnniversaries = [];
+            currentCalendarEvents = [];
+            resetPlannerSyncState();
+            renderCouplePlanner();
+            const anniversariesRef = collection(db, 'artifacts', appId, 'users', spaceId, 'anniversaries');
+            unsubscribeAnniversaries = onSnapshot(
+                anniversariesRef,
+                { includeMetadataChanges: true },
+                snapshot => {
+                    if (spaceId !== getActiveSpaceId()) return;
+                    currentAnniversaries = snapshot.docs.map(item => ({ id: item.id, ...item.data() }));
+                    updatePlannerSyncState('anniversaries', plannerSnapshotState(snapshot));
+                    markPlannerSnapshotSynced(snapshot);
+                    renderCouplePlanner();
+                },
+                error => {
+                    console.error('載入紀念日失敗', error);
+                    updatePlannerSyncState('anniversaries', 'error', error.message);
+                }
+            );
+            const calendarEventsRef = collection(db, 'artifacts', appId, 'users', spaceId, 'calendarEvents');
+            unsubscribeCalendarEvents = onSnapshot(
+                calendarEventsRef,
+                { includeMetadataChanges: true },
+                snapshot => {
+                    if (spaceId !== getActiveSpaceId()) return;
+                    currentCalendarEvents = snapshot.docs.map(item => ({ id: item.id, ...item.data() }));
+                    updatePlannerSyncState('calendarEvents', plannerSnapshotState(snapshot));
+                    markPlannerSnapshotSynced(snapshot);
+                    renderCouplePlanner();
+                },
+                error => {
+                    console.error('載入行程失敗', error);
+                    updatePlannerSyncState('calendarEvents', 'error', error.message);
+                }
+            );
+        }
+
+        async function retryPlannerSync() {
+            if (plannerSyncRetryBusy || !currentUser || !getActiveSpaceId()) return;
+            plannerSyncRetryBusy = true;
+            renderPlannerSyncStatus();
+            try {
+                const spaceId = getActiveSpaceId();
+                cleanupPlannerCategoryListeners();
+                setupPlannerCollectionListeners(spaceId);
+                renderMainGrid(currentCategories);
+                showToast('已重新連線共同計畫', 'fas fa-rotate');
+            } catch (error) {
+                console.error('重試共同計畫同步失敗', error);
+                updatePlannerSyncState('plans', 'error', error.message);
+            } finally {
+                plannerSyncRetryBusy = false;
+                renderPlannerSyncStatus();
+            }
+        }
+
+        document.getElementById('planner-sync-retry').addEventListener('click', () => void retryPlannerSync());
+
         function setupCategoryListener(catId, catType, catName, catIcon) {
             const listEl = document.getElementById(`list-${catId}`);
             if (!listEl) return;
+            plannerCategoryUnsubscribes.get(catId)?.();
             const listenedSpaceId = getActiveSpaceId();
-            onSnapshot(collection(db, 'artifacts', appId, 'users', getActiveSpaceId(), catId), (snapshot) => {
-                if (listenedSpaceId !== getActiveSpaceId()) return;
-                const items = []; snapshot.forEach(doc => items.push({ id: doc.id, ...doc.data() }));
-                items.sort((a, b) => getOrder(b) - getOrder(a));
-                currentItemsByCollection.set(catId, items);
-                automaticResearchLoadedCollections.add(String(catId));
-                
-                const countEl = document.getElementById(`count-${catId}`);
-                if (countEl) {
-                    countEl.innerText = items.length;
+            const unsubscribe = onSnapshot(
+                collection(db, 'artifacts', appId, 'users', listenedSpaceId, catId),
+                { includeMetadataChanges: true },
+                snapshot => {
+                    if (listenedSpaceId !== getActiveSpaceId()) return;
+                    const items = []; snapshot.forEach(doc => items.push({ id: doc.id, ...doc.data() }));
+                    items.sort((a, b) => getOrder(b) - getOrder(a));
+                    currentItemsByCollection.set(catId, items);
+                    automaticResearchLoadedCollections.add(String(catId));
+                    if (catType === 'todo') {
+                        updatePlannerTodoSyncState(catId, plannerSnapshotState(snapshot));
+                        markPlannerSnapshotSynced(snapshot);
+                    }
+                    const countEl = document.getElementById(`count-${catId}`);
+                    if (countEl) countEl.innerText = items.length;
+                    if (catType === 'todo') {
+                        renderTodos(items, listEl, catId);
+                    } else if (catType === 'bookmark') {
+                        renderBookmarks(items, listEl, catId);
+                    } else {
+                        renderList(items, listEl, catId, `${catIcon} text-slate-400`);
+                    }
+                    refreshOpenTagBrowser();
+                    renderCouplePlanner();
+                    renderAutomaticResearchScheduleStatus();
+                    if (isAutomaticResearchDataReady()) scheduleAutomaticResearchCheck();
+                },
+                error => {
+                    console.error(`載入${catName || catId}失敗`, error);
+                    if (catType === 'todo') updatePlannerTodoSyncState(catId, 'error');
                 }
-                
-                if (catType === 'todo') {
-                    renderTodos(items, listEl, catId);
-                } else if (catType === 'bookmark') {
-                    renderBookmarks(items, listEl, catId);
-                } else {
-                    renderList(items, listEl, catId, `${catIcon} text-slate-400`);
-                }
-                refreshOpenTagBrowser();
-                renderCouplePlanner();
-                renderAutomaticResearchScheduleStatus();
-                if (isAutomaticResearchDataReady()) scheduleAutomaticResearchCheck();
-            });
+            );
+            plannerCategoryUnsubscribes.set(catId, unsubscribe);
         }
 
         function getPlannerTodoGroups() {
             return currentCategories.filter(category => category.type === 'todo')
                 .map(category => ({ id: category.id, items: currentItemsByCollection.get(category.id) || [] }));
+        }
+
+        function getPlannerEntrySource(entry) {
+            if (entry.kind === 'event') {
+                return currentCalendarEvents.find(item => item.id === entry.id) || null;
+            }
+            if (entry.kind === 'anniversary') {
+                return currentAnniversaries.find(item => item.id === entry.id) || null;
+            }
+            return currentItemsByCollection.get(entry.collectionId)?.find(item => item.id === entry.id) || null;
+        }
+
+        function getPlannerCreatorName(uid) {
+            if (!uid) return '未記錄';
+            if (currentUser?.uid === uid) return currentUser.displayName || currentUser.email || '我';
+            const member = currentSpaceMembers.find(item => item.uid === uid);
+            return member?.displayName || member?.email || '共同空間成員';
+        }
+
+        function formatPlannerDate(date) {
+            const parsed = parseDateKey(date);
+            if (!parsed) return '未排日期';
+            return new Intl.DateTimeFormat('zh-TW', {
+                month: 'long', day: 'numeric', weekday: 'short'
+            }).format(new Date(parsed.year, parsed.month - 1, parsed.day));
+        }
+
+        function setPlannerSelectedDate(date, { updateMonth = true } = {}) {
+            if (!parseDateKey(date)) return false;
+            plannerSelectedDate = date;
+            if (updateMonth) {
+                const parsed = parseDateKey(date);
+                plannerMonth = new Date(parsed.year, parsed.month - 1, 1);
+            }
+            return true;
+        }
+
+        function plannerSnapshotState(snapshot) {
+            return snapshot.metadata?.fromCache || snapshot.metadata?.hasPendingWrites ? 'syncing' : 'synced';
+        }
+
+        function renderPlannerSyncStatus() {
+            const status = document.getElementById('planner-sync-status');
+            const retry = document.getElementById('planner-sync-retry');
+            if (!status || !retry) return;
+            const states = [...Object.values(plannerSyncState)];
+            const hasError = states.includes('error');
+            const isSyncing = states.includes('syncing');
+            const summary = hasError ? 'error' : isSyncing ? 'syncing' : 'synced';
+            const statusCopy = {
+                syncing: '同步中…',
+                synced: '已同步',
+                error: '同步失敗'
+            };
+            const statusStyles = {
+                syncing: ['bg-amber-50', 'text-amber-700'],
+                synced: ['bg-emerald-50', 'text-emerald-700'],
+                error: ['bg-rose-50', 'text-rose-700']
+            };
+            status.dataset.state = summary;
+            status.textContent = statusCopy[summary];
+            status.className = `rounded-full px-2.5 py-1 font-semibold ${statusStyles[summary][0]} ${statusStyles[summary][1]}`;
+            retry.classList.toggle('hidden', summary !== 'error');
+            retry.disabled = plannerSyncRetryBusy;
+            retry.textContent = plannerSyncRetryBusy ? '重試中…' : '重試同步';
+        }
+
+        function updatePlannerSyncState(key, state, error = '') {
+            if (!(key in plannerSyncState)) return;
+            plannerSyncState[key] = state;
+            if (state === 'error' && error) plannerSyncErrors.set(key, error);
+            else plannerSyncErrors.delete(key);
+            renderPlannerSyncStatus();
+        }
+
+        function updatePlannerTodoSyncState(collectionId, snapshotState) {
+            if (!plannerTodoCollectionIds.has(collectionId)) return;
+            plannerTodoSyncStates.set(collectionId, snapshotState);
+            const states = [...plannerTodoCollectionIds].map(id => plannerTodoSyncStates.get(id) || 'syncing');
+            updatePlannerSyncState('plans', states.includes('error') ? 'error' : states.every(state => state === 'synced') ? 'synced' : 'syncing');
+        }
+
+        function resetPlannerSyncState() {
+            plannerSyncErrors.clear();
+            plannerSyncState.anniversaries = 'syncing';
+            plannerSyncState.calendarEvents = 'syncing';
+            plannerSyncState.plans = plannerTodoCollectionIds.size === 0 ? 'synced' : 'syncing';
+            plannerTodoSyncStates.clear();
+            plannerLastSyncedAt = null;
+            renderPlannerSyncStatus();
+            renderPlannerCollaborationMeta();
+        }
+
+        function markPlannerSnapshotSynced(snapshot) {
+            if (!snapshot.metadata?.fromCache && !snapshot.metadata?.hasPendingWrites) {
+                plannerLastSyncedAt = Date.now();
+                renderPlannerCollaborationMeta();
+            }
+        }
+
+        function renderPlannerCollaborationMeta() {
+            const collaborators = document.getElementById('planner-collaborators');
+            const lastSynced = document.getElementById('planner-last-synced');
+            if (collaborators) {
+                const names = currentSpaceMembers
+                    .map(member => member.displayName || member.email)
+                    .filter(Boolean);
+                collaborators.textContent = names.length
+                    ? `共編者：${names.slice(0, 2).join('、')}${names.length > 2 ? ` 等 ${names.length} 人` : ''}`
+                    : currentUser ? '共編者：目前空間' : '共編者：登入後顯示';
+            }
+            if (lastSynced) {
+                lastSynced.textContent = plannerLastSyncedAt
+                    ? `最近同步：${new Intl.DateTimeFormat('zh-TW', { hour: '2-digit', minute: '2-digit' }).format(plannerLastSyncedAt)}`
+                    : '最近同步：尚未同步';
+            }
+        }
+
+        function renderPlannerAgenda(entries) {
+            const agenda = document.getElementById('planner-agenda-list');
+            const dateInput = document.getElementById('planner-agenda-date');
+            if (!agenda || !dateInput) return;
+            dateInput.value = plannerSelectedDate || '';
+            const dayEntries = entries.filter(entry => entry.date === plannerSelectedDate);
+            if (!dayEntries.length) {
+                agenda.innerHTML = `<div class="rounded-lg border border-dashed border-indigo-200 bg-white/70 px-3 py-5 text-center text-sm text-slate-500">${escapeHtml(formatPlannerDate(plannerSelectedDate))} 還沒有安排。<br><span class="text-xs text-slate-400">可以先把下一件想一起做的事排進來。</span></div>`;
+                return;
+            }
+            agenda.innerHTML = dayEntries.map(entry => {
+                const source = getPlannerEntrySource(entry);
+                const creator = getPlannerCreatorName(source?.createdByUid);
+                const detail = entry.kind === 'event'
+                    ? [entry.startTime, entry.endTime, entry.location].filter(Boolean).join(' · ') || '未設定時間'
+                    : entry.kind === 'anniversary'
+                        ? '每年重複'
+                        : entry.completed ? '已完成' : '共同計畫';
+                const tone = entry.kind === 'anniversary'
+                    ? 'border-rose-100 bg-rose-50 text-rose-800'
+                    : entry.kind === 'event'
+                        ? 'border-teal-100 bg-teal-50 text-teal-800'
+                        : entry.completed ? 'border-slate-200 bg-slate-50 text-slate-500' : 'border-indigo-100 bg-white text-indigo-800';
+                const className = entry.kind === 'anniversary' ? 'planner-agenda-anniversary' : entry.kind === 'event' ? 'planner-agenda-event' : 'planner-agenda-entry';
+                const planAttrs = entry.kind === 'event' || entry.kind === 'anniversary'
+                    ? ''
+                    : `data-col="${escapeHtml(entry.collectionId)}"`;
+                return `<button type="button" class="${className} flex w-full items-start justify-between gap-3 rounded-xl border px-3 py-2.5 text-left ${tone} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400" data-id="${escapeHtml(entry.id)}" ${planAttrs} aria-label="開啟${escapeHtml(entry.kind === 'anniversary' ? '紀念日' : '共同計畫')}：${escapeHtml(entry.title)}"><span class="min-w-0"><span class="block truncate font-bold">${escapeHtml(entry.kind === 'anniversary' ? '♥' : entry.kind === 'event' ? '行程' : PLAN_KINDS[entry.kind])} · ${escapeHtml(entry.title)}</span><span class="mt-1 block text-xs opacity-75">${escapeHtml(detail)}</span></span><span class="shrink-0 text-[11px] opacity-70">建立者：${escapeHtml(creator)}</span></button>`;
+            }).join('');
         }
 
         function renderCouplePlanner() {
@@ -357,9 +594,12 @@
             const month = plannerMonth.getMonth() + 1;
             document.getElementById('planner-month-label').textContent = `${year} 年 ${month} 月`;
             document.getElementById('planner-add-event').disabled = !currentUser;
+            renderPlannerSyncStatus();
+            renderPlannerCollaborationMeta();
             if (!currentUser) {
                 calendar.innerHTML = '';
                 wishes.innerHTML = '';
+                document.getElementById('planner-agenda-list').innerHTML = '';
                 upcoming.textContent = '登入後即可查看共同日曆與紀念日。';
                 anniversaryList.innerHTML = '';
                 return;
@@ -367,12 +607,13 @@
 
             const today = new Date();
             const todayKey = dateKey(today.getFullYear(), today.getMonth() + 1, today.getDate());
+            if (!parseDateKey(plannerSelectedDate)) setPlannerSelectedDate(todayKey);
             const soon = getUpcomingAnniversaries(currentAnniversaries, todayKey);
             upcoming.textContent = soon.length
                 ? `即將到來：${soon.map(item => `${item.occurrence} ${item.title}`).join('、')}`
                 : '未來 30 天沒有紀念日。';
             anniversaryList.innerHTML = currentAnniversaries.length
-                ? currentAnniversaries.map(item => `<span class="inline-flex items-center gap-2 rounded-full bg-rose-50 px-3 py-1.5 text-rose-700">${escapeHtml(item.title)} · ${escapeHtml(item.date)} 每年 <button type="button" class="delete-anniversary hover:text-rose-900" data-id="${escapeHtml(item.id)}" aria-label="刪除 ${escapeHtml(item.title)}">×</button></span>`).join('')
+                ? currentAnniversaries.map(item => `<span class="inline-flex items-center gap-2 rounded-full bg-rose-50 px-3 py-1.5 text-rose-700"><span>${escapeHtml(item.title)} · ${escapeHtml(item.date)} 每年</span><button type="button" class="edit-anniversary hover:text-rose-900" data-id="${escapeHtml(item.id)}" aria-label="編輯 ${escapeHtml(item.title)}"><i class="fas fa-pen text-[10px]" aria-hidden="true"></i></button><button type="button" class="delete-anniversary hover:text-rose-900" data-id="${escapeHtml(item.id)}" aria-label="刪除 ${escapeHtml(item.title)}"><i class="fas fa-xmark text-[10px]" aria-hidden="true"></i></button></span>`).join('')
                 : '<span class="text-slate-400">尚未加入紀念日</span>';
 
             const groups = getPlannerTodoGroups();
@@ -383,6 +624,7 @@
                 ? unscheduledWishes.map(item => `<button type="button" class="planner-entry max-w-full truncate rounded-full bg-amber-50 px-3 py-1.5 text-left text-amber-800 hover:bg-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400" data-col="${escapeHtml(item.collectionId)}" data-id="${escapeHtml(item.id)}" title="開啟願望卡片">${escapeHtml(item.text || '無標題')}</button>`).join('')
                 : '<span class="text-xs text-slate-400">還沒有未排期的願望</span>';
             const entries = getCalendarEntries(groups, currentAnniversaries, year, month, currentCalendarEvents);
+            renderPlannerAgenda(entries);
             const byDate = new Map();
             for (const entry of entries) {
                 if (!byDate.has(entry.date)) byDate.set(entry.date, []);
@@ -397,15 +639,17 @@
                     const day = index + 1;
                     const key = dateKey(year, month, day);
                     const items = (byDate.get(key) || []).map(entry => {
+                        const source = getPlannerEntrySource(entry);
+                        const creator = getPlannerCreatorName(source?.createdByUid);
                         if (entry.kind === 'anniversary') {
-                            return `<div class="truncate rounded bg-rose-100 px-1.5 py-1 text-[11px] text-rose-700" title="${escapeHtml(entry.title)}">♥ ${escapeHtml(entry.title)}</div>`;
+                            return `<button type="button" class="calendar-anniversary-entry block w-full truncate rounded bg-rose-100 px-1.5 py-1 text-left text-[11px] text-rose-700 hover:bg-rose-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400" data-id="${escapeHtml(entry.id)}" title="編輯紀念日：${escapeHtml(entry.title)}">♥ ${escapeHtml(entry.title)}</button>`;
                         }
                         if (entry.kind === 'event') {
                             const time = entry.startTime ? `${entry.startTime} ` : '';
-                            const description = [entry.title, entry.startTime, entry.endTime, entry.location].filter(Boolean).join(' · ');
+                            const description = [entry.title, entry.startTime, entry.endTime, entry.location, `建立者：${creator}`].filter(Boolean).join(' · ');
                             return `<button type="button" class="calendar-event-entry block w-full truncate rounded bg-teal-50 px-1.5 py-1 text-left text-xs text-teal-800 hover:bg-teal-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-400" data-id="${escapeHtml(entry.id)}" title="${escapeHtml(description)}">${escapeHtml(time)}${escapeHtml(entry.title)}</button>`;
                         }
-                        return `<button type="button" class="planner-entry block w-full truncate rounded px-1.5 py-1 text-left text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 ${entry.completed ? 'bg-slate-100 text-slate-500 line-through' : 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100'}" data-col="${escapeHtml(entry.collectionId)}" data-id="${escapeHtml(entry.id)}" title="${escapeHtml(entry.title)}">${escapeHtml(PLAN_KINDS[entry.kind])} · ${escapeHtml(entry.title)}</button>`;
+                        return `<button type="button" class="planner-entry block w-full truncate rounded px-1.5 py-1 text-left text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 ${entry.completed ? 'bg-slate-100 text-slate-500 line-through' : 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100'}" data-col="${escapeHtml(entry.collectionId)}" data-id="${escapeHtml(entry.id)}" title="${escapeHtml(entry.title)} · 建立者：${escapeHtml(creator)}">${escapeHtml(PLAN_KINDS[entry.kind])} · ${escapeHtml(entry.title)}</button>`;
                     }).join('');
                     return `<div class="planner-calendar-day min-h-20 min-w-0 cursor-pointer rounded-lg border ${key === todayKey ? 'border-rose-300 bg-rose-50/30' : 'border-slate-100'} p-1 hover:bg-indigo-50/50" data-date="${key}"><button type="button" class="planner-day mb-1 rounded px-1 text-xs font-bold text-slate-600 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400" data-date="${key}" aria-label="在 ${year} 年 ${month} 月 ${day} 日排行程">${day}</button><div class="space-y-1">${items}</div></div>`;
                 }).join('');
@@ -435,7 +679,7 @@
             const selected = parseDateKey(`${monthJumpInput.value}-01`);
             if (!selected) { monthJumpInput.setCustomValidity('請選擇有效年月'); monthJumpInput.reportValidity(); return; }
             monthJumpInput.setCustomValidity('');
-            plannerMonth = new Date(selected.year, selected.month - 1, 1);
+            setPlannerSelectedDate(dateKey(selected.year, selected.month, 1));
             closeMonthJump(true);
             renderCouplePlanner();
         });
@@ -448,43 +692,117 @@
         });
         document.getElementById('planner-prev-month').addEventListener('click', () => {
             closeMonthJump();
-            plannerMonth = new Date(plannerMonth.getFullYear(), plannerMonth.getMonth() - 1, 1);
+            setPlannerSelectedDate(dateKey(plannerMonth.getFullYear(), plannerMonth.getMonth(), 1));
             renderCouplePlanner();
         });
         document.getElementById('planner-next-month').addEventListener('click', () => {
             closeMonthJump();
-            plannerMonth = new Date(plannerMonth.getFullYear(), plannerMonth.getMonth() + 1, 1);
+            setPlannerSelectedDate(dateKey(plannerMonth.getFullYear(), plannerMonth.getMonth() + 2, 1));
             renderCouplePlanner();
         });
         document.getElementById('planner-today').addEventListener('click', () => {
             closeMonthJump();
-            plannerMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+            const today = new Date();
+            setPlannerSelectedDate(dateKey(today.getFullYear(), today.getMonth() + 1, today.getDate()));
             renderCouplePlanner();
         });
+        document.getElementById('planner-agenda-date').addEventListener('change', event => {
+            if (!setPlannerSelectedDate(event.target.value)) {
+                event.target.value = plannerSelectedDate;
+                return;
+            }
+            renderCouplePlanner();
+        });
+        function movePlannerAgendaDate(offset) {
+            const parsed = parseDateKey(plannerSelectedDate);
+            if (!parsed) return;
+            const next = new Date(parsed.year, parsed.month - 1, parsed.day + offset);
+            setPlannerSelectedDate(dateKey(next.getFullYear(), next.getMonth() + 1, next.getDate()));
+            renderCouplePlanner();
+        }
+        document.getElementById('planner-agenda-prev').addEventListener('click', () => movePlannerAgendaDate(-1));
+        document.getElementById('planner-agenda-next').addEventListener('click', () => movePlannerAgendaDate(1));
+        document.getElementById('planner-agenda-add').addEventListener('click', () => {
+            openPlannerEntryModal(null, '', plannerSelectedDate, 'event');
+        });
+        function openAnniversaryEditor(id) {
+            const item = currentAnniversaries.find(value => value.id === id);
+            if (!item) return;
+            activeAnniversaryId = item.id;
+            document.getElementById('anniversary-title').value = item.title || '';
+            document.getElementById('anniversary-date').value = item.date || '';
+            document.getElementById('anniversary-submit').textContent = '儲存紀念日';
+            document.getElementById('anniversary-cancel-edit').classList.remove('hidden');
+            document.getElementById('anniversary-title').focus();
+        }
+        function closeAnniversaryEditor() {
+            activeAnniversaryId = null;
+            document.getElementById('anniversary-form').reset();
+            document.getElementById('anniversary-submit').textContent = '新增紀念日';
+            document.getElementById('anniversary-cancel-edit').classList.add('hidden');
+        }
         function openPlannerEntry(event) {
+            const anniversaryButton = event.target.closest('.calendar-anniversary-entry');
+            if (anniversaryButton) {
+                openAnniversaryEditor(anniversaryButton.dataset.id);
+                return;
+            }
             const calendarEventButton = event.target.closest('.calendar-event-entry');
             if (calendarEventButton) {
                 const item = currentCalendarEvents.find(value => value.id === calendarEventButton.dataset.id);
-                if (item) openPlannerEntryModal(item, 'calendarEvents');
+                if (item) {
+                    setPlannerSelectedDate(item.date);
+                    openPlannerEntryModal(item, 'calendarEvents');
+                }
                 return;
             }
             const dayButton = event.target.closest('.planner-day');
-            if (dayButton) { openPlannerEntryModal(null, '', dayButton.dataset.date, 'event'); return; }
+            if (dayButton) {
+                setPlannerSelectedDate(dayButton.dataset.date);
+                openPlannerEntryModal(null, '', dayButton.dataset.date, 'event');
+                return;
+            }
             const button = event.target.closest('.planner-entry');
             if (button) {
                 const item = currentItemsByCollection.get(button.dataset.col)?.find(value => value.id === button.dataset.id);
-                if (item) openPlannerEntryModal(item, button.dataset.col);
+                if (item) {
+                    if (item.planDate) setPlannerSelectedDate(item.planDate);
+                    openPlannerEntryModal(item, button.dataset.col);
+                }
                 return;
             }
             const dayCell = event.target.closest('.planner-calendar-day');
-            if (dayCell) openPlannerEntryModal(null, '', dayCell.dataset.date, 'event');
+            if (dayCell) {
+                setPlannerSelectedDate(dayCell.dataset.date);
+                openPlannerEntryModal(null, '', dayCell.dataset.date, 'event');
+            }
         }
         document.getElementById('planner-calendar').addEventListener('click', openPlannerEntry);
         document.getElementById('planner-wishes').addEventListener('click', openPlannerEntry);
+        document.getElementById('planner-agenda-list').addEventListener('click', event => {
+            const anniversaryButton = event.target.closest('.planner-agenda-anniversary');
+            if (anniversaryButton) {
+                openAnniversaryEditor(anniversaryButton.dataset.id);
+                return;
+            }
+            const eventButton = event.target.closest('.planner-agenda-event');
+            if (eventButton) {
+                const item = currentCalendarEvents.find(value => value.id === eventButton.dataset.id);
+                if (item) openPlannerEntryModal(item, 'calendarEvents');
+                return;
+            }
+            const planButton = event.target.closest('.planner-agenda-entry');
+            if (planButton) {
+                const item = currentItemsByCollection.get(planButton.dataset.col)?.find(value => value.id === planButton.dataset.id);
+                if (item) openPlannerEntryModal(item, planButton.dataset.col);
+            }
+        });
         document.getElementById('planner-add-event').addEventListener('click', () => {
             const today = new Date();
             const visibleMonth = plannerMonth.getMonth() === today.getMonth() && plannerMonth.getFullYear() === today.getFullYear();
-            openPlannerEntryModal(null, '', visibleMonth
+            openPlannerEntryModal(null, '', parseDateKey(plannerSelectedDate) && visibleMonth
+                ? plannerSelectedDate
+                : visibleMonth
                 ? dateKey(today.getFullYear(), today.getMonth() + 1, today.getDate())
                 : dateKey(plannerMonth.getFullYear(), plannerMonth.getMonth() + 1, 1), 'event');
         });
@@ -576,7 +894,7 @@
             const activePlan = activePlannerEntry?.storageType === 'plan' ? activePlannerEntry : null;
             if (!activePlan) {
                 const docRef = await addDoc(collection(db, 'artifacts', appId, 'users', getActiveSpaceId(), targetCollection), {
-                    ...data, createdAt: Date.now(), order: Date.now()
+                    ...data, createdAt: Date.now(), createdByUid: currentUser.uid, order: Date.now()
                 });
                 return { wasEditing: false, id: docRef.id };
             }
@@ -679,10 +997,22 @@
                 let result;
                 if (kind === 'event') {
                     if (activePlannerEntry?.storageType === 'event') {
-                        await updateDoc(doc(db, 'artifacts', appId, 'users', spaceId, 'calendarEvents', activePlannerEntry.id), fields);
+                        const eventRef = doc(db, 'artifacts', appId, 'users', spaceId, 'calendarEvents', activePlannerEntry.id);
+                        const oldSnapshot = await getDoc(eventRef);
+                        if (!oldSnapshot.exists()) throw new Error('找不到這筆行程，請重新整理後再試');
+                        const oldData = oldSnapshot.data();
+                        const newData = { ...oldData, ...fields };
+                        await updateDoc(eventRef, fields);
+                        historyManager.push({
+                            undo: async () => { await setDoc(eventRef, oldData); showToast('行程修改已復原', 'fas fa-undo'); },
+                            redo: async () => { await setDoc(eventRef, newData); showToast('行程修改已重做', 'fas fa-redo'); }
+                        });
                     } else {
-                        await addDoc(collection(db, 'artifacts', appId, 'users', spaceId, 'calendarEvents'), {
-                            ...fields, createdAt: Date.now(), createdByUid: currentUser.uid
+                        const data = { ...fields, createdAt: Date.now(), createdByUid: currentUser.uid };
+                        const eventRef = await addDoc(collection(db, 'artifacts', appId, 'users', spaceId, 'calendarEvents'), data);
+                        historyManager.push({
+                            undo: async () => { await deleteDoc(eventRef); showToast('新增行程已復原', 'fas fa-undo'); },
+                            redo: async () => { await setDoc(eventRef, data); showToast('行程已重做', 'fas fa-redo'); }
                         });
                     }
                     result = { wasEditing };
@@ -703,30 +1033,61 @@
             const button = document.getElementById('calendar-event-delete');
             const saveButton = document.getElementById('calendar-event-save');
             const deletedStorageType = activePlannerEntry.storageType;
+            const spaceId = getActiveSpaceId();
             plannerEntryBusy = true;
             button.disabled = true;
             saveButton.disabled = true;
             try {
                 const collectionName = activePlannerEntry.storageType === 'event' ? 'calendarEvents' : activePlannerEntry.collectionId;
-                await deleteDoc(doc(db, 'artifacts', appId, 'users', getActiveSpaceId(), collectionName, activePlannerEntry.id));
+                const deletedRef = doc(db, 'artifacts', appId, 'users', spaceId, collectionName, activePlannerEntry.id);
+                const oldSnapshot = await getDoc(deletedRef);
+                if (!oldSnapshot.exists()) throw new Error('找不到要刪除的項目');
+                const oldData = oldSnapshot.data();
+                await deleteDoc(deletedRef);
+                historyManager.push({
+                    undo: async () => { await setDoc(deletedRef, oldData); showToast('項目已復原', 'fas fa-undo'); },
+                    redo: async () => { await deleteDoc(deletedRef); showToast('項目已再次刪除', 'fas fa-redo'); }
+                });
                 plannerEntryBusy = false;
                 closePlannerEntryModal();
-                showToast(deletedStorageType === 'event' ? '行程已刪除' : '共同計畫已刪除', 'fas fa-trash-alt');
+                showToast(deletedStorageType === 'event' ? '行程已刪除' : '共同計畫已刪除', 'fas fa-trash-alt', { label: '復原', onClick: () => historyManager.undo() });
             } catch (error) {
                 console.error('刪除共同計畫失敗', error);
                 showPlannerEntryError('刪除失敗，請重試。');
             } finally { plannerEntryBusy = false; button.disabled = false; saveButton.disabled = false; }
         });
         document.getElementById('anniversary-list').addEventListener('click', async event => {
+            const editButton = event.target.closest('.edit-anniversary');
+            if (editButton) {
+                openAnniversaryEditor(editButton.dataset.id);
+                return;
+            }
             const button = event.target.closest('.delete-anniversary');
             if (!button || !currentUser || !confirm('刪除這個紀念日？')) return;
+            const spaceId = getActiveSpaceId();
+            const anniversaryRef = doc(db, 'artifacts', appId, 'users', spaceId, 'anniversaries', button.dataset.id);
             try {
-                await deleteDoc(doc(db, 'artifacts', appId, 'users', getActiveSpaceId(), 'anniversaries', button.dataset.id));
+                const snapshot = await getDoc(anniversaryRef);
+                if (!snapshot.exists()) throw new Error('找不到這個紀念日');
+                const oldData = snapshot.data();
+                await deleteDoc(anniversaryRef);
+                historyManager.push({
+                    undo: async () => {
+                        await setDoc(anniversaryRef, oldData);
+                        showToast('紀念日已復原', 'fas fa-undo');
+                    },
+                    redo: async () => {
+                        await deleteDoc(anniversaryRef);
+                        showToast('紀念日已再次刪除', 'fas fa-redo');
+                    }
+                });
+                showToast('紀念日已刪除', 'fas fa-trash-alt', { label: '復原', onClick: () => historyManager.undo() });
             } catch (error) {
                 console.error('刪除紀念日失敗', error);
                 showToast('刪除紀念日失敗', 'fas fa-triangle-exclamation');
             }
         });
+        document.getElementById('anniversary-cancel-edit').addEventListener('click', closeAnniversaryEditor);
         document.getElementById('anniversary-form').addEventListener('submit', async event => {
             event.preventDefault();
             const form = event.currentTarget;
@@ -734,17 +1095,37 @@
             const title = document.getElementById('anniversary-title').value.trim();
             const date = document.getElementById('anniversary-date').value;
             if (!title || !parseDateKey(date)) return;
-            const button = form.querySelector('button[type="submit"]');
+            const button = document.getElementById('anniversary-submit');
+            const editingId = activeAnniversaryId;
+            const spaceId = getActiveSpaceId();
             button.disabled = true;
             try {
-                await addDoc(collection(db, 'artifacts', appId, 'users', getActiveSpaceId(), 'anniversaries'), {
-                    title, date, createdAt: Date.now(), createdByUid: currentUser.uid
-                });
-                form.reset();
-                showToast('已新增每年重複的紀念日', 'fas fa-heart');
+                if (editingId) {
+                    const anniversaryRef = doc(db, 'artifacts', appId, 'users', spaceId, 'anniversaries', editingId);
+                    const oldSnapshot = await getDoc(anniversaryRef);
+                    if (!oldSnapshot.exists()) throw new Error('找不到這個紀念日');
+                    const oldData = oldSnapshot.data();
+                    const newData = { ...oldData, title, date };
+                    await updateDoc(anniversaryRef, { title, date });
+                    historyManager.push({
+                        undo: async () => { await setDoc(anniversaryRef, oldData); showToast('紀念日修改已復原', 'fas fa-undo'); },
+                        redo: async () => { await setDoc(anniversaryRef, newData); showToast('紀念日修改已重做', 'fas fa-redo'); }
+                    });
+                    closeAnniversaryEditor();
+                    showToast('紀念日已更新', 'fas fa-pen');
+                } else {
+                    const data = { title, date, createdAt: Date.now(), createdByUid: currentUser.uid };
+                    const anniversaryRef = await addDoc(collection(db, 'artifacts', appId, 'users', spaceId, 'anniversaries'), data);
+                    historyManager.push({
+                        undo: async () => { await deleteDoc(anniversaryRef); showToast('新增紀念日已復原', 'fas fa-undo'); },
+                        redo: async () => { await setDoc(anniversaryRef, data); showToast('紀念日已重做', 'fas fa-redo'); }
+                    });
+                    closeAnniversaryEditor();
+                    showToast('已新增每年重複的紀念日', 'fas fa-heart');
+                }
             } catch (error) {
-                console.error('新增紀念日失敗', error);
-                showToast('新增紀念日失敗', 'fas fa-triangle-exclamation');
+                console.error('儲存紀念日失敗', error);
+                showToast('儲存紀念日失敗', 'fas fa-triangle-exclamation');
             } finally { button.disabled = false; }
         });
 
@@ -1049,7 +1430,8 @@
                         ? document.querySelector('[data-col="inbox"]')?.closest('.category-wrapper')
                         : document.getElementById(`list-${targetId}`)?.closest('.category-wrapper');
                 if (targetEl) {
-                    targetEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    const behavior = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
+                    targetEl.scrollIntoView({ behavior, block: 'start' });
                 }
                 closeSidebar();
             });
@@ -2601,7 +2983,7 @@
                 header.className = 'text-lg font-bold text-slate-800 mb-4 flex items-center justify-between';
                 
                 const addBtnHtml = `
-                    <button class="add-item-btn-dynamic text-slate-400 hover:text-indigo-600 bg-slate-50 hover:bg-indigo-50 border border-slate-200 w-7 h-7 rounded-md transition-colors flex flex-shrink-0 items-center justify-center focus:outline-none shadow-sm" data-col="${cat.id}" data-name="${escapeHtml(cat.name || '')}" title="在此分類新增">
+                    <button type="button" aria-label="在 ${escapeHtml(cat.name || '此分類')} 新增" class="add-item-btn-dynamic text-slate-400 hover:text-indigo-600 bg-slate-50 hover:bg-indigo-50 border border-slate-200 w-7 h-7 rounded-md transition-colors flex flex-shrink-0 items-center justify-center focus:outline-none shadow-sm" data-col="${cat.id}" data-name="${escapeHtml(cat.name || '')}" title="在此分類新增">
                         <i class="fas fa-plus text-xs"></i>
                     </button>
                 `;
@@ -2611,10 +2993,10 @@
                     controlsHtml = `
                     <div class="flex items-center gap-2">
                         ${addBtnHtml}
-                        <button class="toggle-completed-btn-dynamic text-xs font-normal text-slate-500 hover:text-indigo-600 bg-slate-50 border border-slate-200 hover:bg-indigo-50 px-2 py-1 rounded-md transition-colors flex items-center gap-1 focus:outline-none shadow-sm" data-col="${cat.id}">
+                        <button type="button" aria-label="切換 ${escapeHtml(cat.name || '待辦')} 的完成項目顯示" class="toggle-completed-btn-dynamic text-xs font-normal text-slate-500 hover:text-indigo-600 bg-slate-50 border border-slate-200 hover:bg-indigo-50 px-2 py-1 rounded-md transition-colors flex items-center gap-1 focus:outline-none shadow-sm" data-col="${cat.id}">
                             <i class="fas fa-eye-slash toggle-icon"></i> <span class="hidden sm:inline toggle-text">隱藏已完成</span>
                         </button>
-                        <button class="delete-completed-btn-dynamic text-xs font-normal text-rose-500 hover:text-rose-700 bg-rose-50 border border-rose-200 hover:bg-rose-100 px-2 py-1 rounded-md transition-colors flex items-center gap-1 focus:outline-none shadow-sm" data-col="${cat.id}">
+                        <button type="button" aria-label="清空 ${escapeHtml(cat.name || '待辦')} 的已完成項目" class="delete-completed-btn-dynamic text-xs font-normal text-rose-500 hover:text-rose-700 bg-rose-50 border border-rose-200 hover:bg-rose-100 px-2 py-1 rounded-md transition-colors flex items-center gap-1 focus:outline-none shadow-sm" data-col="${cat.id}">
                             <i class="fas fa-trash-alt"></i> <span class="hidden sm:inline">清空已完成</span>
                         </button>
                     </div>`;
@@ -2926,11 +3308,13 @@
                     // Pair status and the invite form both depend on member
                     // count, so refresh the whole panel rather than the list.
                     renderSpaceControls();
+                    renderPlannerCollaborationMeta();
                 },
                 error => {
                     console.error('無法載入空間成員：', error);
                     currentSpaceMembers = [];
                     renderSpaceControls();
+                    renderPlannerCollaborationMeta();
                 }
             );
         }
@@ -2956,30 +3340,10 @@
         function startSpaceDataListeners(spaceId) {
             if (!currentUser || !spaceId || initializedSpaceId === spaceId) return;
             initializedSpaceId = spaceId;
-            unsubscribeAnniversaries?.();
-            unsubscribeCalendarEvents?.();
-            currentAnniversaries = [];
-            currentCalendarEvents = [];
+            cleanupPlannerCategoryListeners();
             currentItemsByCollection.clear();
-            renderCouplePlanner();
-            unsubscribeAnniversaries = onSnapshot(
-                collection(db, 'artifacts', appId, 'users', spaceId, 'anniversaries'),
-                snapshot => {
-                    if (spaceId !== getActiveSpaceId()) return;
-                    currentAnniversaries = snapshot.docs.map(item => ({ id: item.id, ...item.data() }));
-                    renderCouplePlanner();
-                },
-                error => console.error('載入紀念日失敗', error)
-            );
-            unsubscribeCalendarEvents = onSnapshot(
-                collection(db, 'artifacts', appId, 'users', spaceId, 'calendarEvents'),
-                snapshot => {
-                    if (spaceId !== getActiveSpaceId()) return;
-                    currentCalendarEvents = snapshot.docs.map(item => ({ id: item.id, ...item.data() }));
-                    renderCouplePlanner();
-                },
-                error => console.error('載入行程失敗', error)
-            );
+            plannerTodoCollectionIds.clear();
+            setupPlannerCollectionListeners(spaceId);
             loadResearchReviews();
             updateResearchLogCount();
             setupSpaceMembersListener(spaceId);
@@ -3066,6 +3430,13 @@
                 unsubscribeAnniversaries = null;
                 unsubscribeCalendarEvents?.();
                 unsubscribeCalendarEvents = null;
+                cleanupPlannerCategoryListeners();
+                plannerTodoCollectionIds.clear();
+                plannerTodoSyncStates.clear();
+                plannerSyncState.anniversaries = 'syncing';
+                plannerSyncState.calendarEvents = 'syncing';
+                plannerSyncState.plans = 'syncing';
+                plannerLastSyncedAt = null;
                 currentAnniversaries = [];
                 currentCalendarEvents = [];
                 currentItemsByCollection.clear();
@@ -3148,6 +3519,11 @@
 
                 currentCategories.sort((a, b) => a.order - b.order);
                 const categoryIds = new Set(currentCategories.map(category => category.id));
+                cleanupPlannerCategoryListeners();
+                plannerTodoCollectionIds.clear();
+                currentCategories.filter(category => category.type === 'todo')
+                    .forEach(category => plannerTodoCollectionIds.add(category.id));
+                resetPlannerSyncState();
                 [...currentItemsByCollection.keys()].forEach(id => {
                     if (!categoryIds.has(id)) currentItemsByCollection.delete(id);
                 });
@@ -3175,10 +3551,10 @@
         function getActionButtonsHTML() {
             return `
                 <div class="flex items-center gap-0.5 shrink-0 z-10">
-                    <button class="copy-btn text-slate-400 hover:text-indigo-600 hover:bg-slate-100 transition-all cursor-pointer p-1.5 bg-transparent rounded-full" title="複製"><i class="fas fa-copy"></i></button>
-                    <button class="edit-btn text-slate-400 hover:text-indigo-600 hover:bg-slate-100 transition-all cursor-pointer p-1.5 bg-transparent rounded-full" title="編輯"><i class="fas fa-pen"></i></button>
-                    <button class="move-btn text-slate-400 hover:text-indigo-600 hover:bg-slate-100 transition-all cursor-pointer p-1.5 bg-transparent rounded-full" title="移動分類"><i class="fas fa-folder-open"></i></button>
-                    <button class="delete-btn text-slate-400 hover:text-red-500 hover:bg-red-50 transition-all cursor-pointer p-1.5 bg-transparent rounded-full" title="刪除"><i class="fas fa-trash-alt"></i></button>
+                    <button type="button" aria-label="複製卡片" class="copy-btn text-slate-400 hover:text-indigo-600 hover:bg-slate-100 transition-all cursor-pointer p-1.5 bg-transparent rounded-full" title="複製"><i class="fas fa-copy" aria-hidden="true"></i></button>
+                    <button type="button" aria-label="編輯卡片" class="edit-btn text-slate-400 hover:text-indigo-600 hover:bg-slate-100 transition-all cursor-pointer p-1.5 bg-transparent rounded-full" title="編輯"><i class="fas fa-pen" aria-hidden="true"></i></button>
+                    <button type="button" aria-label="移動卡片分類" class="move-btn text-slate-400 hover:text-indigo-600 hover:bg-slate-100 transition-all cursor-pointer p-1.5 bg-transparent rounded-full" title="移動分類"><i class="fas fa-folder-open" aria-hidden="true"></i></button>
+                    <button type="button" aria-label="刪除卡片" class="delete-btn text-slate-400 hover:text-red-500 hover:bg-red-50 transition-all cursor-pointer p-1.5 bg-transparent rounded-full" title="刪除"><i class="fas fa-trash-alt" aria-hidden="true"></i></button>
                 </div>`;
         }
 
@@ -3399,7 +3775,18 @@
                 
                 checkbox.addEventListener('click', (e) => e.stopPropagation());
                 checkbox.addEventListener('change', async (e) => {
-                    if(currentUser) try { await updateDoc(doc(db, 'artifacts', appId, 'users', getActiveSpaceId(), containerEl.getAttribute('data-col'), item.id), { completed: e.target.checked }); } catch(err) {}
+                    if (!currentUser) {
+                        e.target.checked = !e.target.checked;
+                        showToast('請先登入，才能更新待辦狀態', 'fas fa-right-to-bracket');
+                        return;
+                    }
+                    try {
+                        await updateDoc(doc(db, 'artifacts', appId, 'users', getActiveSpaceId(), containerEl.getAttribute('data-col'), item.id), { completed: e.target.checked });
+                    } catch (error) {
+                        e.target.checked = !e.target.checked;
+                        console.error('更新待辦狀態失敗', error);
+                        showToast('同步待辦狀態失敗，已復原勾選', 'fas fa-triangle-exclamation');
+                    }
                 });
 
                 attachItemListeners(li, item, containerEl.getAttribute('data-col')); containerEl.appendChild(li);
@@ -3436,31 +3823,39 @@
 
         document.getElementById('cancel-delete-btn').addEventListener('click', () => { confirmModal.classList.add('hidden'); pendingDeleteTarget = null; });
         document.getElementById('confirm-delete-btn').addEventListener('click', async () => {
-            if (currentUser && pendingDeleteTarget) {
+            if (!currentUser) {
+                showToast('請先登入，才能刪除卡片', 'fas fa-right-to-bracket');
+                return;
+            }
+            if (pendingDeleteTarget) {
                 const btn = document.getElementById('confirm-delete-btn'); const originalHTML = btn.innerHTML; btn.innerHTML = '<div class="loader w-4 h-4 mx-auto border-t-white border-2"></div>'; btn.disabled = true;
                 try { 
                     const col = pendingDeleteTarget.col;
                     const id = pendingDeleteTarget.id;
-                    const docRef = doc(db, 'artifacts', appId, 'users', getActiveSpaceId(), col, id);
+                    const spaceId = getActiveSpaceId();
+                    const docRef = doc(db, 'artifacts', appId, 'users', spaceId, col, id);
                     const docSnap = await getDoc(docRef);
                     if (docSnap.exists()) {
                         const data = docSnap.data();
                         const shortText = getShortText(data.text);
                         const colName = getCollectionName(col);
+                        await deleteDoc(docRef);
                         historyManager.push({
                             undo: async () => {
-                                await setDoc(doc(db, 'artifacts', appId, 'users', getActiveSpaceId(), col, id), data);
+                                await setDoc(doc(db, 'artifacts', appId, 'users', spaceId, col, id), data);
                                 showToast(`已還原：將「${shortText}」放回 [${colName}]`, 'fas fa-undo');
                             },
                             redo: async () => {
-                                await deleteDoc(doc(db, 'artifacts', appId, 'users', getActiveSpaceId(), col, id));
+                                await deleteDoc(doc(db, 'artifacts', appId, 'users', spaceId, col, id));
                                 showToast(`已重做：將「${shortText}」移至垃圾桶`, 'fas fa-redo');
                             }
                         });
-                        await deleteDoc(docRef); 
-                        showToast(`已將「${shortText}」移至垃圾桶`, 'fas fa-trash-alt'); 
+                        showToast(`已將「${shortText}」移至垃圾桶`, 'fas fa-trash-alt', { label: '復原', onClick: () => historyManager.undo() });
                     }
-                } catch(err) {} finally { btn.innerHTML = originalHTML; btn.disabled = false; confirmModal.classList.add('hidden'); pendingDeleteTarget = null; }
+                } catch(err) {
+                    console.error('刪除卡片失敗', err);
+                    showToast('刪除卡片失敗，請重試', 'fas fa-triangle-exclamation');
+                } finally { btn.innerHTML = originalHTML; btn.disabled = false; confirmModal.classList.add('hidden'); pendingDeleteTarget = null; }
             }
         });
 
@@ -3611,7 +4006,12 @@
         });
 
         document.getElementById('confirm-add-card-btn').addEventListener('click', async () => {
-            if (!currentUser || !activeAddCardColId) return;
+            if (!currentUser) {
+                showToast('請先登入，才能新增卡片', 'fas fa-right-to-bracket');
+                document.getElementById('login-btn')?.focus();
+                return;
+            }
+            if (!activeAddCardColId) return;
             let text = addCardInput.value.trim();
             if (!text) return;
 
@@ -3631,7 +4031,8 @@
                 const newDocData = { 
                     text: text, 
                     cardSearchText: text.toLocaleLowerCase('zh-Hant'),
-                    createdAt: Date.now(), 
+                    createdAt: Date.now(),
+                    createdByUid: currentUser.uid,
                     order: Date.now() 
                 };
                 if (isTodo) {
@@ -3659,7 +4060,7 @@
                 closeAddCardModal();
             } catch (error) {
                 console.error("新增卡片失敗", error);
-                alert("新增卡片失敗：" + error.message);
+                showToast(`新增卡片失敗：${error.message || '請稍後再試'}，表單仍保留`, 'fas fa-triangle-exclamation');
             } finally {
                 btn.disabled = false;
                 btn.innerText = '新增';
@@ -3668,7 +4069,12 @@
 
         document.getElementById('cancel-edit-btn').addEventListener('click', () => { closeEditCardModal(); });
         document.getElementById('confirm-edit-btn').addEventListener('click', async () => {
-            if (currentUser && pendingEditTarget) {
+            if (!currentUser) {
+                showToast('請先登入，才能編輯卡片', 'fas fa-right-to-bracket');
+                document.getElementById('login-btn')?.focus();
+                return;
+            }
+            if (pendingEditTarget) {
                 const newText = document.getElementById('edit-input').value.trim(); if (!newText) return;
                 const isTodo = currentCategories.some(category => category.id === pendingEditTarget.col && category.type === 'todo');
                 const planKind = document.getElementById('edit-plan-kind').value;
@@ -4507,7 +4913,12 @@
         }
 
         document.getElementById('add-form').addEventListener('submit', async (e) => {
-            e.preventDefault(); if (!currentUser) return;
+            e.preventDefault();
+            if (!currentUser) {
+                showToast('請先登入，才能新增共同內容', 'fas fa-right-to-bracket');
+                document.getElementById('login-btn')?.focus();
+                return;
+            }
             let text = ideaInput.value.trim(); 
             
             if (!text && !stagedImageFile) return;
@@ -4539,7 +4950,7 @@
                 const newDocData = { 
                     text: text || "（附加圖片）", 
                     cardSearchText: (text || "（附加圖片）").toLocaleLowerCase('zh-Hant'),
-                    createdAt: Date.now(), order: Date.now() 
+                    createdAt: Date.now(), createdByUid: currentUser.uid, order: Date.now()
                 };
 
                 if (uploadedImageUrl) newDocData.imageUrl = uploadedImageUrl;
@@ -4564,7 +4975,8 @@
                 removeImageBtn.click(); 
 
             } catch (error) { 
-                console.error("送出失敗", error); alert("送出失敗：" + error.message);
+                console.error("送出失敗", error);
+                showToast(`送出失敗：${error.message || '請稍後再試'}，內容仍保留在輸入框`, 'fas fa-triangle-exclamation');
             } finally { 
                 btn.disabled = false; btn.innerHTML = '<i class="fas fa-paper-plane text-xs"></i>'; ideaInput.focus();
             }
@@ -5783,25 +6195,41 @@ ${JSON.stringify(inboxData, null, 2)}`;
         });
 
         // Toast System
-        window.showToast = function(message, icon = 'fas fa-info-circle') {
+        window.showToast = function(message, icon = 'fas fa-info-circle', action = null) {
             const container = document.getElementById('toast-container');
             const toast = document.createElement('div');
-            toast.className = 'bg-slate-800 text-white px-4 py-2 rounded-lg shadow-lg flex items-center gap-2 transform transition-all duration-300 translate-y-full opacity-0 text-sm font-medium';
+            toast.className = 'bg-slate-800 text-white px-4 py-2 rounded-lg shadow-lg flex items-center gap-3 transform transition-all duration-300 translate-y-full opacity-0 text-sm font-medium';
             const iconElement = document.createElement('i');
             iconElement.className = String(icon);
             const messageElement = document.createElement('span');
             messageElement.textContent = String(message);
             toast.append(iconElement, messageElement);
+            let dismissTimer;
+            if (action?.onClick) {
+                const actionButton = document.createElement('button');
+                actionButton.type = 'button';
+                actionButton.className = 'shrink-0 rounded-md px-2 py-1 text-xs font-bold text-indigo-200 hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300';
+                actionButton.textContent = action.label || '復原';
+                actionButton.setAttribute('aria-label', action.label || '復原');
+                actionButton.addEventListener('click', async () => {
+                    actionButton.disabled = true;
+                    try { await action.onClick(); } finally {
+                        clearTimeout(dismissTimer);
+                        toast.remove();
+                    }
+                });
+                toast.appendChild(actionButton);
+            }
             container.appendChild(toast);
             
             requestAnimationFrame(() => {
                 toast.classList.remove('translate-y-full', 'opacity-0');
             });
             
-            setTimeout(() => {
+            dismissTimer = setTimeout(() => {
                 toast.classList.add('translate-y-full', 'opacity-0');
                 setTimeout(() => toast.remove(), 300);
-            }, 3000);
+            }, action?.onClick ? 6000 : 3000);
         };
 
         if ('serviceWorker' in navigator) {
