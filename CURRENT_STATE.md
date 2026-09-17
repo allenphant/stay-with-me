@@ -17,7 +17,7 @@
 ### 本批部署狀態
 
 * Firebase CLI 嘗試部署 rules 時回覆 `Authentication Error: Your credentials are no longer valid. Please run firebase login --reauth`，因此 Functions／rules 尚未更新到正式 Firebase。需要使用者重新登入 Firebase CLI 後，再執行既定部署指令。
-* GitHub Pages 前端尚未由本批 commit 觸發；推送後正式站位置仍為 `https://allenphant.github.io/stay-with-me/`。
+* GitHub Pages run `35195406770` 已以 commit `90f5b66` 完成；正式站已回讀 `couple-life-hub`／「共同生活」標記：`https://allenphant.github.io/stay-with-me/`。
 * 真人正式站驗收仍由使用者執行；目前 CUA 沒有可用瀏覽器或 App surface，未代替使用者宣稱 UI 驗收完成。
 
 ## 本次對話目標
