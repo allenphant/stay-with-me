@@ -3,6 +3,15 @@
 > **更新時間**：2026-09-17
 > **專案核心**：以 Vanilla JS、Firebase Authentication／Firestore／Functions 與 GitHub Pages 打造的雙人共編生活空間。
 
+## 2026-09-18 天竺鼠 loading 修正與小糰子正式站素材
+
+* 已確認「正在準備你們的共同小夥伴…」不是預期的完成狀態：正常初始化資料應顯示飽足度 72、心情 68；截圖中的 0／100 代表 Callable 或 Firestore listener 尚未把寵物資料送回前端。
+* 前端現在對 `ensureGuineaPig` 加上 12 秒逾時、錯誤狀態與「重新載入」按鈕；Callable 成功回傳的完整寵物資料也會直接更新畫面，不再只等待 Firestore listener。
+* `ensureGuineaPig`、購買飼料與餵食 Callable 都回傳正規化的小糰子資料；保留 0 值狀態，不會因為 falsy 判斷被重設成初始值。
+* 新增由 imagegen 產生的透明背景素材 `assets/guinea-pig-xiaotuanzi.png`，已接入共同小夥伴卡片；正式站已回讀圖片、重試按鈕與 12 秒逾時邏輯。
+* 程式碼與素材已推送至 commit `21a7c10`；Firebase Functions 更新成功，GitHub Pages run `35298512665` 已以 `success` 完成；未登入 smoke check 仍正確回覆 `UNAUTHENTICATED`。
+* 尚待使用者在正式站登入後確認實際初始化、購買與餵食；本環境沒有使用者登入 session，未代替使用者宣稱 authenticated UI 驗收完成。
+
 ## 2026-09-17 Planner 同步卡住修正
 
 * 已修正共同計畫同步狀態的兩個問題：Firestore 本機快取沒有伺服器回覆時不再永久顯示「同步中…」；分類快照也不會再把已完成的紀念日／行程同步狀態重設回 `syncing`。
