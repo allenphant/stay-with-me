@@ -155,6 +155,23 @@ function defaultGuineaPigData(now) {
   };
 }
 
+function publicGuineaPigData(pet) {
+  const data = pet || {};
+  return {
+    id: "guineaPig",
+    species: data.species || "guinea_pig",
+    name: data.name || GUINEA_PIG_POLICY.name,
+    hunger: clampPetStat(data.hunger ?? GUINEA_PIG_POLICY.initialHunger),
+    mood: clampPetStat(data.mood ?? GUINEA_PIG_POLICY.initialMood),
+    health: clampPetStat(data.health ?? GUINEA_PIG_POLICY.initialHealth),
+    feedCount: Math.max(0, Number(data.feedCount) || 0),
+    inventory: {
+      ...defaultGuineaPigData(null).inventory,
+      ...(data.inventory || {}),
+    },
+  };
+}
+
 function todayDateKey(now = Date.now()) {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Taipei",
@@ -664,20 +681,21 @@ exports.ensureGuineaPig = onCall({
     const snapshot = await transaction.get(petRef);
     if (snapshot.exists) {
       const pet = snapshot.data();
+      const publicPet = publicGuineaPigData(pet);
       return {
         created: false,
-        name: pet.name || GUINEA_PIG_POLICY.name,
-        hunger: clampPetStat(pet.hunger),
-        mood: clampPetStat(pet.mood),
+        pet: publicPet,
+        ...publicPet,
       };
     }
     const now = FieldValue.serverTimestamp();
-    transaction.set(petRef, defaultGuineaPigData(now));
+    const newPet = defaultGuineaPigData(now);
+    transaction.set(petRef, newPet);
+    const publicPet = publicGuineaPigData(newPet);
     return {
       created: true,
-      name: GUINEA_PIG_POLICY.name,
-      hunger: GUINEA_PIG_POLICY.initialHunger,
-      mood: GUINEA_PIG_POLICY.initialMood,
+      pet: publicPet,
+      ...publicPet,
     };
   });
 });
@@ -708,12 +726,14 @@ exports.buyGuineaPigFeed = onCall({
     const initialGrant = walletSnapshot.exists ? 0 : TOKEN_POLICY.welcomeGrant;
     const currentBalance = Math.max(0, Number(existingWallet.balance || 0)) + initialGrant;
     if (ledgerSnapshot.exists) {
+      const publicPet = publicGuineaPigData(petSnapshot.exists ? petSnapshot.data() : null);
       return {
         purchased: true,
         charged: false,
         balance: currentBalance,
         feedId,
         inventory: Number(petSnapshot.data()?.inventory?.[feedId] || 0),
+        pet: publicPet,
       };
     }
     if (currentBalance < feed.cost) {
@@ -747,9 +767,9 @@ exports.buyGuineaPigFeed = onCall({
     transaction.set(petRef, {
       species: existingPet.species || "guinea_pig",
       name: existingPet.name || GUINEA_PIG_POLICY.name,
-      hunger: clampPetStat(existingPet.hunger || GUINEA_PIG_POLICY.initialHunger),
-      mood: clampPetStat(existingPet.mood || GUINEA_PIG_POLICY.initialMood),
-      health: clampPetStat(existingPet.health || GUINEA_PIG_POLICY.initialHealth),
+      hunger: clampPetStat(existingPet.hunger ?? GUINEA_PIG_POLICY.initialHunger),
+      mood: clampPetStat(existingPet.mood ?? GUINEA_PIG_POLICY.initialMood),
+      health: clampPetStat(existingPet.health ?? GUINEA_PIG_POLICY.initialHealth),
       feedCount: Number(existingPet.feedCount || 0),
       inventory,
       updatedAt: now,
@@ -762,7 +782,17 @@ exports.buyGuineaPigFeed = onCall({
       purchaseId,
       createdAt: now,
     });
-    return {purchased: true, charged: true, balance, feedId, inventory: inventory[feedId]};
+    return {
+      purchased: true,
+      charged: true,
+      balance,
+      feedId,
+      inventory: inventory[feedId],
+      pet: publicGuineaPigData({
+        ...existingPet,
+        inventory,
+      }),
+    };
   });
 });
 
@@ -801,13 +831,26 @@ exports.feedGuineaPig = onCall({
       inventory,
       hunger,
       mood,
-      health: clampPetStat(pet.health || GUINEA_PIG_POLICY.initialHealth),
+      health: clampPetStat(pet.health ?? GUINEA_PIG_POLICY.initialHealth),
       feedCount: Number(pet.feedCount || 0) + 1,
       lastFedByUid: uid,
       lastFedAt: now,
       updatedAt: now,
     }, {merge: true});
-    return {fed: true, feedId, inventory: inventory[feedId], hunger, mood};
+    return {
+      fed: true,
+      feedId,
+      inventory: inventory[feedId],
+      hunger,
+      mood,
+      pet: publicGuineaPigData({
+        ...pet,
+        inventory,
+        hunger,
+        mood,
+        feedCount: Number(pet.feedCount || 0) + 1,
+      }),
+    };
   });
 });
 

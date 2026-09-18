@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 
 const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 const app = readFileSync(new URL('../app.js', import.meta.url), 'utf8');
@@ -14,7 +14,7 @@ test('couple-life hub exposes each shared feature exactly once', () => {
         'daily-diary-form', 'daily-diary-date', 'daily-diary-input', 'daily-diary-submit',
         'daily-diary-list', 'weekly-review-panel', 'weekly-review-generate', 'weekly-review-content',
         'guinea-pig-panel', 'guinea-pig-name', 'guinea-pig-name-card', 'guinea-pig-shop',
-        'guinea-pig-inventory', 'guinea-pig-hunger-bar', 'guinea-pig-mood-bar', 'guinea-pig-status',
+        'guinea-pig-inventory', 'guinea-pig-hunger-bar', 'guinea-pig-mood-bar', 'guinea-pig-status', 'guinea-pig-retry',
         'shared-whiteboard-panel', 'shared-whiteboard-note-form', 'shared-whiteboard-note-input',
         'shared-whiteboard-todo-form', 'shared-whiteboard-todo-input', 'shared-whiteboard-list'
     ];
@@ -47,8 +47,21 @@ test('feature module routes money, pet state, and private content through truste
         assert.match(features, new RegExp(`call\\('${callable}'`), `${callable} should be called by the feature module`);
     }
     assert.match(features, /GUINEA_PIG_FEEDS/);
+    assert.match(features, /GUINEA_PIG_LOAD_TIMEOUT_MS/);
+    assert.match(features, /天竺鼠資料載入逾時/);
+    assert.match(features, /guinea-pig-retry/);
     assert.match(features, /getDoc\(doc\(db, \.\.\.rootPath\(\), 'diaries', diary\.id, 'content', 'private'\)\)/);
     assert.match(features, /localStorage\.getItem\('geminiApiKey'\)/);
+});
+
+test('guinea pig card ships a local mascot asset and a recoverable load state', () => {
+    assert.match(html, /src="\.\/assets\/guinea-pig-xiaotuanzi\.png"/);
+    const mascot = new URL('../assets/guinea-pig-xiaotuanzi.png', import.meta.url);
+    assert.equal(existsSync(mascot), true);
+    assert.ok(statSync(mascot).size > 1000);
+    assert.match(html, /id="guinea-pig-retry"[^>]*hidden/);
+    assert.match(features, /小糰子載入失敗/);
+    assert.match(features, /state\.guineaPigLoadError/);
 });
 
 test('Firestore rules protect token, diary, review, whiteboard, and pet boundaries', () => {
