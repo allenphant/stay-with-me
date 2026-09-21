@@ -3,11 +3,17 @@
 > **更新時間**：2026-09-21
 > **專案核心**：以 Vanilla JS、Firebase Authentication／Firestore／Functions 與 GitHub Pages 打造的雙人共編生活空間。
 
+## 2026-09-21 部署後維運收尾完成
+
+* 使用者完成 `gcloud` 重新登入後，已成功更新並回讀 `runResearchJob` Cloud Tasks queue。
+* Queue 狀態為 `RUNNING`；`maxConcurrentDispatches=1`、`maxDispatchesPerSecond=0.016667`（約每分鐘一筆）、`maxAttempts=3`，符合既有安全限速契約。
+* 天竺鼠正式站驗收與本次 Functions 部署後的維運工作均已完成，目前沒有未解決 blocker。
+
 ## 2026-09-21 天竺鼠正式站驗收通過
 
 * 使用者已在正式站確認小糰子可完成初始化，先前永久停在「等待共同小夥伴資料…」的問題已解除。
 * 天竺鼠圖片、初始狀態、代幣購買、共享庫存與餵食流程的本輪驗收已結束；產品待辦改列完成。
-* 目前只剩部署後維運項目：待重新執行 `gcloud auth login` 後，恢復並回讀 `runResearchJob` Cloud Tasks 安全限速。
+* 部署後的 `runResearchJob` Cloud Tasks 安全限速已恢復並回讀完成。
 
 ## 2026-09-21 天竺鼠永久等待根因修正
 

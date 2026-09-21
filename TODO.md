@@ -11,7 +11,7 @@
 - `P3`：細節與長期優化
 - `✅` 已完成　`⏳` 進行中　`⬜` 待辦　`🧭` 待決策
 
-## 現在處理：部署後維運收尾
+## 現在處理：功能與部署收尾完成
 
 - `P1` ✅ 共同生活原有功能正式站真人驗收：首次進入、側欄跳轉、行程新增，以及同步狀態不再永久卡住（2026-09-17 通過）
 - `P1` ✅ 天竺鼠功能正式站真人驗收：購買飼料、代幣扣款、共享庫存與餵食狀態更新（2026-09-21 通過）
@@ -25,7 +25,7 @@
 
 - `P1` ✅ 修正非法 `tokens/wallets/{uid}`／`tokens/ledger/{id}` document 路徑，改為 `tokenWallets/{uid}`／`tokenLedger/{id}`；前端、Functions 與 rules 已同步部署。
 - `P1` ✅ 天竺鼠初始化移到其他共同生活 listener 之前，並加入 Firestore document path segment 回歸測試。
-- `P1` ⏳ Functions 部署後的 Cloud Tasks 安全限速待 `gcloud auth login` 後恢復並回讀。
+- `P1` ✅ Functions 部署後的 Cloud Tasks 安全限速已恢復並回讀：`RUNNING`、同時 1 筆、約每分鐘 1 筆、最多重試 3 次。
 
 ## 產品功能待辦
 
