@@ -21,6 +21,12 @@
 - `P1` ✅ 排查「正在準備」永久 loading：加入 Callable 12 秒逾時、Firestore listener 錯誤呈現、重新載入入口，以及 Callable 回傳資料的前端 fallback。
 - `P1` ✅ 小糰子透明背景素材已接入共同小夥伴卡片並部署正式站；真人驗收仍以登入後畫面與購買／餵食流程為準。
 
+### 2026-09-21 Firestore 路徑根因修正
+
+- `P1` ✅ 修正非法 `tokens/wallets/{uid}`／`tokens/ledger/{id}` document 路徑，改為 `tokenWallets/{uid}`／`tokenLedger/{id}`；前端、Functions 與 rules 已同步部署。
+- `P1` ✅ 天竺鼠初始化移到其他共同生活 listener 之前，並加入 Firestore document path segment 回歸測試。
+- `P1` ⏳ Functions 部署後的 Cloud Tasks 安全限速待 `gcloud auth login` 後恢復並回讀。
+
 ## 產品功能待辦
 
 - `P1` ✅ 每日共同問答：每天一題，雙方回答後揭曉彼此答案；完成回答獲得代幣

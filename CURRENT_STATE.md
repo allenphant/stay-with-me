@@ -3,6 +3,15 @@
 > **更新時間**：2026-09-17
 > **專案核心**：以 Vanilla JS、Firebase Authentication／Firestore／Functions 與 GitHub Pages 打造的雙人共編生活空間。
 
+## 2026-09-21 天竺鼠永久等待根因修正
+
+* 正式 `ensureGuineaPig` logs 沒有任何 authenticated request，確認問題發生在前端呼叫 Function 之前。根因是 `attachSpace` 先建立代幣 listener，而舊路徑 `artifacts/{appId}/users/{spaceId}/tokens/wallets/{uid}` 有奇數段，只能代表 collection，不能作為 Firestore document；`doc()` 同步拋錯後中止了整個共同生活初始化。
+* 錢包與 ledger 已改成合法文件路徑 `tokenWallets/{uid}`、`tokenLedger/{ledgerId}`；Functions、前端 listener 與 Firestore rules 已一起更新。舊路徑不可能成功寫入文件，因此不需要資料搬移。
+* 天竺鼠 listener 與 `ensureGuineaPig` 現在排在其他共同生活 listener 之前，避免無關 listener 的同步錯誤再次阻斷小糰子初始化。
+* 新增 `functions/src/couple-feature-paths.js` 與回歸測試，會驗證 token path 的 segment 數為偶數且可指向 Firestore document；完整測試 23／23、JS syntax check 與 `git diff --check` 通過。
+* 修正已推送至 commit `802f43e`；Firestore rules 與 Functions 部署成功，GitHub Pages run `35550537338` 已成功，正式站回讀到 `pets/guineaPig → ensureGuineaPig → tokenWallets` 的順序且舊 `tokens/wallets` 路徑已消失。
+* Functions 部署後需恢復 `runResearchJob` Cloud Tasks 限速；本機 `gcloud` reauthentication 已過期，執行 update 時未修改 queue。待使用者重新執行 `gcloud auth login` 後，恢復並回讀 `maxConcurrentDispatches=1`、`maxDispatchesPerSecond=0.016667`。
+
 ## 2026-09-18 天竺鼠 loading 修正與小糰子正式站素材
 
 * 已確認「正在準備你們的共同小夥伴…」不是預期的完成狀態：正常初始化資料應顯示飽足度 72、心情 68；截圖中的 0／100 代表 Callable 或 Firestore listener 尚未把寵物資料送回前端。
