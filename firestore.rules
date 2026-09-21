@@ -46,12 +46,12 @@ service cloud.firestore {
     // Couple-life data with money or privacy implications is written only by
     // trusted Callable Functions. The client can read the shared feature
     // state, but it cannot mint tokens, change prices, or reveal diary text.
-    match /artifacts/{appId}/users/{spaceId}/tokens/wallets/{uid} {
+    match /artifacts/{appId}/users/{spaceId}/tokenWallets/{uid} {
       allow read: if isSpaceMember(appId, spaceId) && request.auth.uid == uid;
       allow write: if false;
     }
 
-    match /artifacts/{appId}/users/{spaceId}/tokens/ledger/{ledgerId} {
+    match /artifacts/{appId}/users/{spaceId}/tokenLedger/{ledgerId} {
       allow read: if isSpaceMember(appId, spaceId) && resource.data.uid == request.auth.uid;
       allow write: if false;
     }
@@ -97,7 +97,8 @@ service cloud.firestore {
     // also the data-root ID. Personal space IDs equal their owner's UID.
     match /artifacts/{appId}/users/{spaceId}/{collectionName}/{document=**} {
       allow read, write: if collectionName != "memberships" &&
-        collectionName != "tokens" &&
+        collectionName != "tokenWallets" &&
+        collectionName != "tokenLedger" &&
         collectionName != "dailyQuestions" &&
         collectionName != "diaries" &&
         collectionName != "weeklyReviews" &&

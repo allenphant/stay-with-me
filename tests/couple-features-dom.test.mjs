@@ -50,6 +50,12 @@ test('feature module routes money, pet state, and private content through truste
     assert.match(features, /GUINEA_PIG_LOAD_TIMEOUT_MS/);
     assert.match(features, /天竺鼠資料載入逾時/);
     assert.match(features, /guinea-pig-retry/);
+    assert.match(features, /doc\(db, \.\.\.root, 'tokenWallets', uid\)/);
+    assert.doesNotMatch(features, /'tokens', 'wallets'/);
+    assert.ok(
+        features.indexOf('void ensureGuineaPig(spaceId)') < features.indexOf("doc(db, ...root, 'tokenWallets', uid)"),
+        'pet initialization should start before unrelated couple-life listeners'
+    );
     assert.match(features, /getDoc\(doc\(db, \.\.\.rootPath\(\), 'diaries', diary\.id, 'content', 'private'\)\)/);
     assert.match(features, /localStorage\.getItem\('geminiApiKey'\)/);
 });
@@ -65,9 +71,11 @@ test('guinea pig card ships a local mascot asset and a recoverable load state', 
 });
 
 test('Firestore rules protect token, diary, review, whiteboard, and pet boundaries', () => {
-    for (const collectionName of ['tokens', 'dailyQuestions', 'diaries', 'weeklyReviews', 'whiteboardBlocks', 'pets']) {
+    for (const collectionName of ['tokenWallets', 'tokenLedger', 'dailyQuestions', 'diaries', 'weeklyReviews', 'whiteboardBlocks', 'pets']) {
         assert.match(rules, new RegExp(`collectionName != "${collectionName}"`));
     }
+    assert.match(rules, /tokenWallets\/\{uid\}/);
+    assert.match(rules, /tokenLedger\/\{ledgerId\}/);
     assert.match(rules, /diaries\/\{diaryId\}\/content\/\{document=\*\*\}/);
     assert.match(rules, /allow write: if false;/);
     assert.match(rules, /whiteboardBlocks\/\{document=\*\*\}/);

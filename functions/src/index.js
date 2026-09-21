@@ -47,6 +47,10 @@ const {
   questionForDate,
   TOKEN_POLICY,
 } = require("./couple-feature-policy");
+const {
+  tokenLedgerPath,
+  tokenWalletPath,
+} = require("./couple-feature-paths");
 
 initializeApp();
 
@@ -110,11 +114,11 @@ function coupleSpaceRoot(spaceId) {
 }
 
 function tokenWalletRef(spaceId, uid) {
-  return coupleSpaceRoot(spaceId).collection("tokens").collection("wallets").doc(uid);
+  return db.doc(tokenWalletPath(APP_ID, spaceId, uid));
 }
 
 function tokenLedgerRef(spaceId, ledgerId) {
-  return coupleSpaceRoot(spaceId).collection("tokens").collection("ledger").doc(ledgerId);
+  return db.doc(tokenLedgerPath(APP_ID, spaceId, ledgerId));
 }
 
 function dailyQuestionRef(spaceId, dateKey) {

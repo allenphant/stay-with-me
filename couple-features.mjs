@@ -538,7 +538,25 @@ export function createCoupleFeatures({
         }
         const uid = currentUid();
         const root = rootPath();
-        listen(doc(db, ...root, 'tokens', 'wallets', uid), snapshot => {
+        listen(doc(db, ...root, 'pets', 'guineaPig'), snapshot => {
+            if (snapshot.exists()) {
+                applyGuineaPig({id: snapshot.id, ...snapshot.data()});
+                state.guineaPigLoading = false;
+            } else if (!state.guineaPig) {
+                state.guineaPig = null;
+            }
+            renderGuineaPig();
+        }, '天竺鼠', error => {
+            if (state.guineaPig) {
+                setStatus('guinea-pig-status', '小糰子同步暫時中斷，但目前資料仍保留在畫面上。', 'error');
+                return;
+            }
+            state.guineaPigLoading = false;
+            state.guineaPigLoadError = guineaPigErrorMessage(error);
+            renderGuineaPig();
+        });
+        void ensureGuineaPig(spaceId);
+        listen(doc(db, ...root, 'tokenWallets', uid), snapshot => {
             state.wallet = snapshot.exists() ? snapshot.data() : null;
             renderTokenBalance();
             renderGuineaPig();
@@ -571,23 +589,6 @@ export function createCoupleFeatures({
             state.whiteboardBlocks = snapshot.docs.map(item => ({ id: item.id, ...item.data() }));
             renderWhiteboard();
         }, '白板');
-        listen(doc(db, ...root, 'pets', 'guineaPig'), snapshot => {
-            if (snapshot.exists()) {
-                applyGuineaPig({id: snapshot.id, ...snapshot.data()});
-                state.guineaPigLoading = false;
-            } else if (!state.guineaPig) {
-                state.guineaPig = null;
-            }
-            renderGuineaPig();
-        }, '天竺鼠', error => {
-            if (state.guineaPig) {
-                setStatus('guinea-pig-status', '小糰子同步暫時中斷，但目前資料仍保留在畫面上。', 'error');
-                return;
-            }
-            state.guineaPigLoading = false;
-            state.guineaPigLoadError = guineaPigErrorMessage(error);
-            renderGuineaPig();
-        });
         listen(doc(db, ...root, 'weeklyReviews', weekKey()), snapshot => {
             state.weeklyReview = snapshot.exists() ? snapshot.data() : null;
             renderWeeklyReview();
@@ -596,7 +597,6 @@ export function createCoupleFeatures({
             console.error('建立代幣錢包失敗', error);
             setStatus('couple-token-status', '代幣錢包尚未準備好，請稍後重試。', 'error');
         });
-        void ensureGuineaPig(spaceId);
         renderAll();
     }
 
